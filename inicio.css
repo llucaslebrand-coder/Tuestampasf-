@@ -190,5 +190,7 @@ body.home { padding-bottom: 0; }
     box-shadow: 0 12px 30px #0d4fa366; transform: translateY(140%); transition: transform .25s;
   }
   .home-sticky.is-visible { transform: none; }
+  .nf-badge .home-sticky { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .nf-badge body.home { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
   .home-sticky:focus-visible { outline: 3px solid var(--brand-light); outline-offset: 3px; }
 }

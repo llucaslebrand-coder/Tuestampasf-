@@ -168,6 +168,11 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 /* El aviso aparece arriba de la barra de precio */
 .shop .toast { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 
+/* Lugar para el cartel «Powered by Netlify» (solo en netlify.app) */
+.nf-badge body.shop { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+.nf-badge .shop .toast { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
+.nf-badge .buybar { padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 820px) {
   .shop-grid { grid-template-columns: 1fr; gap: 16px; }
