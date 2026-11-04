@@ -29,7 +29,7 @@ CÓMO PROBAR
 PARA USARLO DE VERDAD (celular, PC y clientes)
 1. ✓ Base creada en Supabase (proyecto Tuestampasf) y conectada en tienda/config.js.
 2. ✓ Usuario administrador creado (tu email).
-3. Publicada en Cloudflare Pages (tuestampasf.pages.dev), conectada a GitHub:
+3. Publicada en Cloudflare (https://tuestampasf.llucaslebrand.workers.dev), conectada a GitHub:
    cada cambio que se sube al repositorio se publica solo.
    Primera vez: entrá con el candado, iniciá sesión y el panel crea solo
    los modelos y las 60 combinaciones de stock en la nube.

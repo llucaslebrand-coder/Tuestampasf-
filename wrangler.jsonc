@@ -2,6 +2,9 @@
 {
   "name": "tuestampasf",
   "compatibility_date": "2026-10-01",
+  // Dirección pública: tuestampasf.llucaslebrand.workers.dev (sin enlaces de vista previa)
+  "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     "directory": ".",
     "not_found_handling": "404-page"
