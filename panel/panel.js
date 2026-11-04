@@ -112,6 +112,14 @@
     fijo: 1500,        // fijo por estampa (planchado, tiempo)
     diseno: 5000,      // cargo por armar el diseño (opcional)
     redondeo: 500,     // redondear precios hacia arriba
+    // DTF a la venta (página «Imprimí tu DTF» de la tienda)
+    dtfModo: 'metro',  // 'metro' (lienzo por metro) o 'sueltas' (cada estampa por su tamaño)
+    dtfAncho: 59,      // ancho útil del lienzo que vendés (cm)
+    dtfMin: 100,       // largo mínimo (cm)
+    dtfPaso: 50,       // el largo aumenta de a (cm)
+    dtfMetro: 0,       // precio de venta del metro (0 = costo del metro + tu ganancia)
+    dtfFijo: 500,      // sueltas: fijo por estampa (recorte, tiempo)
+    dtfMinimo: 0,      // sueltas: pedido mínimo en pesos (0 = sin mínimo)
   };
   const ESTADOS = [
     ['sena', 'Esperando seña'], ['nuevo', 'Nuevo'], ['confirmado', 'Confirmado'], ['produccion', 'En producción'],
@@ -386,7 +394,7 @@
 
   /* Los pedidos de la tienda sin seña se borran solos a los 3 días (con sus imágenes) */
   async function limpiarSinSena() {
-    const vencidos = esperandoSena().filter((p) => p.origen === 'tienda' && venceEl(p) < new Date());
+    const vencidos = esperandoSena().filter((p) => p.origen === 'tienda' && !p.sena_pagada && venceEl(p) < new Date());
     for (const p of vencidos) {
       for (const im of p.imagenes || []) { try { await Store.removeImage(im.ref); } catch (e) { /* sigue */ } }
       await Store.remove('pedidos', p.id);
@@ -440,6 +448,12 @@
 
   function itemsResumen(p) {
     return (p.items || []).map((it) => {
+      if (it.tipo === 'dtf') {
+        const copias = (it.layout || []).length;
+        return it.modo === 'sueltas'
+          ? `DTF: ${copias} ${copias === 1 ? 'estampa suelta' : 'estampas sueltas'} (${(it.piezas || []).length} ${(it.piezas || []).length === 1 ? 'diseño' : 'diseños'})`
+          : `DTF: lienzo ${num(it.ancho, 1)} × ${num(it.largo, 1)} cm — ${(it.piezas || []).length} ${(it.piezas || []).length === 1 ? 'diseño' : 'diseños'}, ${copias} ${copias === 1 ? 'copia' : 'copias'}`;
+      }
       const m = modeloDe(it.modelo_id);
       const est = (it.estampas || []).map((e) => `${e.zona} ${num(e.ancho, 1)}×${num(e.alto, 1)} cm`).join(', ');
       return `${it.cantidad}× ${m ? m.nombre : 'Remera'} ${it.color} T${it.talle}${est ? ` — ${est}` : ''}`;
@@ -459,7 +473,7 @@
       <div class="tabs" role="group" aria-label="Filtrar pedidos">${filtros.map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${pedidoFiltro === k}">${l}</button>`).join('')}</div>
       ${list.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Detalle</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
         ${list.map((p) => `<tr data-id="${p.id}" style="cursor:pointer" tabindex="0">
-          <td>#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}</td><td>${fmtDate(p.fecha)}</td>
+          <td>#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td>${fmtDate(p.fecha)}</td>
           <td>${esc(p.cliente)}</td><td style="white-space:normal;max-width:320px">${esc(itemsResumen(p).join(' · '))}</td>
           <td><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num">${money(p.total)}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="box"><p class="empty">No hay pedidos en esta lista.</p></div>'}`;
@@ -559,6 +573,7 @@
   async function descontarStockPedido(p, silencioso = false) {
     const faltan = [];
     for (const it of p.items || []) {
+      if (it.tipo === 'dtf') continue;   // el DTF solo no usa remeras del stock
       const v = Store.data.variantes.find((x) => x.modelo_id === it.modelo_id && x.color === it.color && x.talle === it.talle);
       if (!v) { faltan.push(`${it.color} T${it.talle}`); continue; }
       await changeStock(v, -(Number(it.cantidad) || 1), 'pedido', `Pedido #${p.numero || ''} · ${p.cliente}`);
@@ -587,6 +602,12 @@
     const costoCm2 = c.metro / (c.ancho * 100) * (1 + c.merma / 100);
     let remeras = 0, dtf = 0, unidades = 0;
     (p.items || []).forEach((it) => {
+      if (it.tipo === 'dtf') {
+        // Film usado: largo del lienzo (o lo que ocupan las sueltas) al costo del metro, según el ancho
+        const largo = it.modo === 'sueltas' ? Number(it.usado) || 0 : Number(it.largo) || 0;
+        dtf += largo / 100 * c.metro * (Number(it.ancho) || c.ancho) / (Number(c.ancho) || 60) * (it.modo === 'sueltas' ? 1 + c.merma / 100 : 1);
+        return;
+      }
       const m = modeloDe(it.modelo_id);
       const cant = Number(it.cantidad) || 1;
       unidades += cant;
@@ -624,7 +645,7 @@
     entregados.forEach((p) => {
       const c = costoPedido(p);
       ventas += Number(p.total) || 0; cRem += c.remeras; cDtf += c.dtf; unidades += c.unidades;
-      (p.items || []).forEach((it) => {
+      (p.items || []).filter((it) => it.tipo !== 'dtf').forEach((it) => {
         porColor[it.color] = (porColor[it.color] || 0) + (Number(it.cantidad) || 1);
         porTalle[it.talle] = (porTalle[it.talle] || 0) + (Number(it.cantidad) || 1);
       });
@@ -725,7 +746,7 @@
   /* Recorrido de un pedido: un botón para pasar al paso siguiente */
   const FLUJO = [['sena', 'Seña'], ['produccion', 'Producción'], ['listo', 'Listo'], ['entregado', 'Entregado']];
   function siguientePaso(p) {
-    if (p.estado === 'sena') return { estado: 'produccion', label: '✓ Seña recibida: pasar a producción', sena: true };
+    if (p.estado === 'sena') return { estado: 'produccion', label: p.sena_pagada ? '▶ Seña ya pagada: pasar a producción' : '✓ Seña recibida: pasar a producción', sena: true };
     if (p.estado === 'nuevo' || p.estado === 'confirmado') return { estado: 'produccion', label: '▶ Pasar a producción' };
     if (p.estado === 'produccion') return { estado: 'listo', label: '✓ Terminado: listo para entregar' };
     if (p.estado === 'listo') return { estado: 'entregado', label: '✓ Entregado' };
@@ -752,6 +773,7 @@
       <p><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span> · ${fmtDateTime(p.fecha)} · ${p.origen === 'tienda' ? 'Tienda online' : 'Cargado en el panel'}</p>
       <ul class="order-items">${itemsResumen(p).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
       <p><b>Total: ${money(p.total)}</b>${p.telefono ? ` · WhatsApp: ${esc(p.telefono)}` : ''}</p>
+      ${p.pago && p.pago.proveedor === 'mercadopago' ? `<p class="sena-line is-ok">✓ Pagado con <b>Mercado Pago</b>: ${money(p.pago.monto)}${p.pago.metodo ? ` (${esc(p.pago.metodo)})` : ''} el ${fmtDateTime(p.pago.fecha)} · operación ${esc(p.pago.id)}</p>` : ''}
       ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
       ${p.estado !== 'cancelado' ? `<ol class="flujo" aria-label="Recorrido del pedido">${FLUJO.map(([k, l], i) => {
         const pos = p.estado === 'nuevo' || p.estado === 'confirmado' ? 0.5 : FLUJO.findIndex(([kk]) => kk === p.estado);
@@ -760,6 +782,7 @@
         return `<li class="${i < pos ? 'is-done' : ''} ${i === pos ? 'is-now' : ''}">${l}${f && i <= pos ? `<small>${f.getDate()}/${f.getMonth() + 1}</small>` : ''}</li>`;
       }).join('')}</ol>` : ''}
       ${siguientePaso(p) ? `<button type="button" class="download" id="pd-next">${siguientePaso(p).label}</button>` : ''}
+      ${(p.items || []).some((x) => x.tipo === 'dtf') ? '<button type="button" class="panel-btn" id="pd-lienzo">▦ Abrir en «Armar lienzo» para imprimir</button>' : ''}
       ${p.notas ? `<p class="panel-note">${esc(p.notas)}</p>` : ''}
       <div class="field"><span class="field-label">Imágenes</span><div class="thumbs" id="pd-imgs">${(p.imagenes || []).length ? 'Cargando…' : '<span class="field-help">Sin imágenes.</span>'}</div></div>
       <label class="field"><span class="field-label">Cambiar estado a mano</span><select id="pd-estado">${ESTADOS.map(([k, l]) => `<option value="${k}" ${k === p.estado ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -775,6 +798,8 @@
         refresh();
         pedidoDetalle(id);
       });
+      const lz = $('#pd-lienzo', body);
+      if (lz) lz.addEventListener('click', () => { closeModal(); abrirLienzoPedido(Store.data.pedidos.find((x) => x.id === id)); });
       const nx = $('#pd-next', body);
       if (nx) nx.addEventListener('click', async () => {
         const paso = siguientePaso(Store.data.pedidos.find((x) => x.id === id));
@@ -1402,6 +1427,20 @@
             <h3 style="margin:14px 0 6px;font-size:15px">Así quedan tus estampas</h3>
             <div class="table-wrap"><table class="tbl" id="q-tabla"></table></div>
           </details>
+          <details class="box" id="q-dtf"><summary><b>DTF a la venta</b> · página «Imprimí tu DTF»</summary>
+            <p class="field-help" style="margin-top:6px">Cómo se vende el DTF solo en la tienda. Si cambiás de impresora, cambiá el ancho acá y listo.</p>
+            <div class="form-grid" style="margin-top:8px">
+              <label class="field full"><span class="field-label">Cómo se cobra</span><select data-cs="dtfModo"><option value="metro" ${cfg.dtfModo !== 'sueltas' ? 'selected' : ''}>Por metro de lienzo</option><option value="sueltas" ${cfg.dtfModo === 'sueltas' ? 'selected' : ''}>Por estampa suelta (según su tamaño)</option></select></label>
+              <label class="field"><span class="field-label">Ancho del lienzo (cm)</span><input type="number" data-c="dtfAncho" min="10" max="200" step="0.5" value="${cfg.dtfAncho}"></label>
+              ${cfg.dtfModo === 'sueltas' ? `
+              <label class="field"><span class="field-label">Fijo por estampa suelta ($)</span><input type="number" data-c="dtfFijo" min="0" step="100" value="${cfg.dtfFijo}"></label>
+              <label class="field"><span class="field-label">Pedido mínimo ($, 0 = sin mínimo)</span><input type="number" data-c="dtfMinimo" min="0" step="500" value="${cfg.dtfMinimo}"></label>` : `
+              <label class="field"><span class="field-label">Largo mínimo (cm)</span><input type="number" data-c="dtfMin" min="10" step="10" value="${cfg.dtfMin}"></label>
+              <label class="field"><span class="field-label">Aumenta de a (cm)</span><input type="number" data-c="dtfPaso" min="1" step="5" value="${cfg.dtfPaso}"></label>
+              <label class="field"><span class="field-label">Precio de venta del metro ($)</span><input type="number" data-c="dtfMetro" min="0" step="500" value="${cfg.dtfMetro || ''}" placeholder="${money(Math.ceil(cfg.metro * (1 + cfg.ganancia / 100) / 500) * 500)} (automático)"></label>`}
+            </div>
+            <p class="field-help" id="q-dtf-ej"></p>
+          </details>
           <section class="box"><h2>Prendas</h2>
             <div class="form-grid">
               <label class="field"><span class="field-label">Modelo</span><select id="q-mod">${Store.data.modelos.map((m) => `<option value="${m.id}" ${m.id === quote.modelo_id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
@@ -1447,8 +1486,23 @@
         return `<tr><td>${n} <small style="color:var(--muted)">${w}×${h} cm</small></td><td class="num">${money(costo)}</td><td class="num"><b>${money(precio)}</b></td><td class="num">${money(precio - costo)}</td></tr>`;
       }).join('')}</tbody>`;
     };
+    const drawDtf = () => {
+      const c = cotizador();
+      const ej = $('#q-dtf-ej', el);
+      if (!ej) return;
+      if (c.dtfModo === 'sueltas') {
+        const cm2 = c.metro / (c.ancho * 100) * (1 + c.merma / 100) * (1 + c.ganancia / 100);
+        const pr = (w, h) => roundUp(w * h * cm2 + (Number(c.dtfFijo) || 0), c.redondeo);
+        ej.innerHTML = `Ejemplos: logo 9×9 cm <b>${money(pr(9, 9))}</b> · 20×20 cm <b>${money(pr(20, 20))}</b> · ${Math.min(28, c.dtfAncho - 1)}×28 cm <b>${money(pr(Math.min(28, c.dtfAncho - 1), 28))}</b>. Usa el mismo precio por cm² del cotizador.`;
+      } else {
+        const pm = Number(c.dtfMetro) || Math.ceil(c.metro * (1 + c.ganancia / 100) / 500) * 500;
+        const costo = c.metro * (Number(c.dtfAncho) || 59) / (Number(c.ancho) || 60);
+        ej.innerHTML = `Ejemplos: ${(c.dtfMin / 100).toLocaleString('es-AR')} m <b>${money(pm * c.dtfMin / 100)}</b> · ${((c.dtfMin + c.dtfPaso) / 100).toLocaleString('es-AR')} m <b>${money(pm * (c.dtfMin + c.dtfPaso) / 100)}</b>. Cada metro te cuesta ${money(costo)} y ganás ${money(pm - costo)}.`;
+      }
+    };
     const drawOut = () => {
       drawTabla();
+      drawDtf();
       const r = calcular(cotizador(), quote);
       $('#q-out', el).innerHTML = `<small class="eyebrow" style="display:block">Total a cobrar</small><span class="big">${money(r.total)}</span>
         <dl class="breakdown">
@@ -1485,6 +1539,15 @@
       const [, w, h, z] = PRESETS[Number(b.dataset.i)];
       quote.estampas.push({ zona: z, ancho: w, alto: h, cantidad: 1 });
       drawEst();
+    }));
+    $$('[data-cs]', el).forEach((sel) => sel.addEventListener('change', async () => {
+      const c = cotizador();
+      c[sel.dataset.cs] = sel.value;
+      Store.data.config.cotizador = c;
+      await Store.setConfig('cotizador', c);
+      const abierto = $('#q-dtf', el).open;
+      refresh();
+      if (abierto) $('#q-dtf').open = true;
     }));
     $$('[data-c]', el).forEach((inp) => inp.addEventListener('input', () => {
       const c = cotizador();
@@ -1576,26 +1639,36 @@
   /* =========================================================
      11. EDITOR DE IMÁGENES (las 10 herramientas, embebidas)
      ========================================================= */
-  let pendingImage = null;
+  let pendingMsg = null;   // mensaje para las herramientas (imagen o lienzo de un pedido)
   function renderEditor(el) {
     el.innerHTML = '<iframe class="editor-frame" id="editor-frame" src="../herramientas.html?embed=1" title="Herramientas de edición de imágenes" allow="clipboard-write"></iframe>';
     const fr = $('#editor-frame', el);
     fr.addEventListener('load', () => {
-      if (pendingImage) {
-        fr.contentWindow.postMessage({ type: 'te-load-image', blob: pendingImage.blob, name: pendingImage.name }, '*');
-        pendingImage = null;
-      }
+      if (pendingMsg) { fr.contentWindow.postMessage(pendingMsg, '*'); pendingMsg = null; }
     });
   }
-  function openInEditor(blob, name) {
-    pendingImage = { blob, name };
-    if (current === 'editar') {
-      const fr = $('#editor-frame');
-      fr.contentWindow.postMessage({ type: 'te-load-image', blob, name }, '*');
-      pendingImage = null;
+  function enviarAlEditor(msg) {
+    if (current === 'editar' && $('#editor-frame')) {
+      $('#editor-frame').contentWindow.postMessage(msg, '*');
     } else {
+      pendingMsg = msg;
       location.hash = 'editar';
     }
+  }
+  function openInEditor(blob, name) { enviarAlEditor({ type: 'te-load-image', blob, name }); }
+  /* Pedido de DTF: abre «Armar lienzo» con cada diseño en su lugar */
+  async function abrirLienzoPedido(p) {
+    const it = (p.items || []).find((x) => x.tipo === 'dtf');
+    if (!it) return;
+    toast('Preparando el lienzo…');
+    const files = [];
+    for (const pz of it.piezas) {
+      const im = (p.imagenes || []).find((x) => x.name === pz.archivo);
+      const blob = im ? await Store.imageBlob(im.ref).catch(() => null) : null;
+      files.push(blob ? { blob, name: pz.nombre || pz.archivo } : null);
+    }
+    if (files.some((f) => !f)) { toast('Falta alguna imagen del pedido: no se pudo armar el lienzo.', true); return; }
+    enviarAlEditor({ type: 'te-load-sheet', files, sheet: { widthCm: it.ancho, heightCm: it.largo, gapMm: 5, items: it.layout } });
   }
 
   /* =========================================================
@@ -1644,6 +1717,17 @@
             <label class="field"><span class="field-label">Alias para la seña</span><input type="text" id="aj-alias" placeholder="Ej.: tuestampasf" value="${esc(tienda.alias ?? 'tuestampasf')}"></label>
             <label class="field"><span class="field-label">Seña ($)</span><input type="number" id="aj-sena" min="0" step="500" value="${esc(tienda.sena ?? 10000)}"></label>
           </div>
+          <label class="check" style="margin-top:8px"><input type="checkbox" id="aj-mp" ${tienda.mp ? 'checked' : ''}> Cobrar también con <b>Mercado Pago</b></label>
+          <details style="margin:6px 0 10px"><summary><b>Cómo activar Mercado Pago</b></summary>
+            <ol class="order-items">
+              <li>En <b>mercadopago.com.ar/developers</b> → <b>Tus integraciones</b> → <b>Crear aplicación</b> (tipo «Pagos online», producto «Checkout Pro»).</li>
+              <li>En la aplicación → <b>Credenciales de producción</b> → copiá el <b>Access Token</b> (empieza con <code>APP_USR-</code>).</li>
+              <li>En Supabase → <b>Project Settings → API Keys</b> → copiá la clave <b>secret</b> (empieza con <code>sb_secret_</code>).</li>
+              <li>En Cloudflare → <b>Workers y Pages → tuestampasf → Configuración → Variables y secretos</b> → <b>Agregar</b>, tipo <b>Secreto</b>:<br><code>MP_ACCESS_TOKEN</code> = el Access Token<br><code>SUPABASE_SECRET_KEY</code> = la clave secret de Supabase.</li>
+              <li>Volvé acá, marcá «Cobrar también con Mercado Pago» y tocá <b>Guardar</b>.</li>
+            </ol>
+            <p class="field-help">Las claves quedan guardadas solo en Cloudflare: no las pegues en ningún otro lado ni las compartas.</p>
+          </details>
           <p class="field-help">Los pedidos de la tienda quedan «Esperando seña» hasta que tocás «Seña recibida». Si no pagan en ${VENCE_DIAS} días se borran solos. Con seña en 0 no se pide seña.</p>
           <div class="row-actions" style="justify-content:flex-start">
             <button type="button" class="download" id="aj-wa-save">Guardar</button>
@@ -1652,7 +1736,7 @@
         </section>
       </div>`;
     $('#aj-wa-save', el).addEventListener('click', async () => {
-      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0) });
+      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0), mp: $('#aj-mp', el).checked });
       toast('Datos de la tienda guardados.');
     });
     $('#aj-shop-copy', el).addEventListener('click', async () => {

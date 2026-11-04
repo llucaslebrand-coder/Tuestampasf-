@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tu pago · Tu Estampa SF</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0d4fa3">
+  <link rel="icon" href="../img/favicon.png" type="image/png">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="tienda.css">
+  <script src="config.js" defer></script>
+</head>
+<body class="shop pago-page">
+  <div class="tool-header-dock">
+    <header class="topbar">
+      <a class="brand" href="../index.html" aria-label="Tu Estampa SF, volver al inicio">
+        <span class="brand-logo brand-logo--round"><img src="../img/logo.png" alt="" width="50" height="50"></span>
+        <span class="brand-name">Tu Estampa SF</span>
+      </a>
+    </header>
+  </div>
+  <main id="contenido" class="shop-main">
+    <div class="ok-box" aria-live="polite">
+      <div class="ok-icon" id="icon" aria-hidden="true">…</div>
+      <h1 id="title">Revisando tu pago…</h1>
+      <p class="lead" id="text">Un momento, estamos confirmando el pago con Mercado Pago.</p>
+      <div class="ok-actions">
+        <a class="download" id="wa" href="#" target="_blank" rel="noopener" hidden>Avisar por WhatsApp</a>
+        <a class="panel-btn" href="../index.html">Volver al inicio</a>
+      </div>
+    </div>
+  </main>
+  <script>
+    /* Página a la que vuelve el cliente después de pagar en Mercado Pago */
+    (function () {
+      const q = new URLSearchParams(location.search);
+      const r = q.get('r'), id = (q.get('p') || '').replace(/[^a-z0-9]/g, '');
+      const codigo = id.slice(-6).toUpperCase();
+      const $ = (s) => document.querySelector(s);
+      const money = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+      const cfg = window.TIENDA_CONFIG || {};
+      let wa = String(cfg.whatsapp || '').replace(/\D/g, '');
+      if (wa && !wa.startsWith('54')) wa = '549' + wa.replace(/^0/, '');
+      function mostrar(icon, title, text, waText) {
+        $('#icon').textContent = icon;
+        $('#title').textContent = title;
+        $('#text').innerHTML = text;
+        if (wa && waText) { $('#wa').hidden = false; $('#wa').href = `https://wa.me/${wa}?text=${encodeURIComponent(waText)}`; }
+      }
+      if (r === 'error') {
+        mostrar('!', 'El pago no se completó', `No se cobró nada. Podés intentar de nuevo desde el enlace de tu pedido o pagar por transferencia${cfg.alias ? ` al alias <b>${cfg.alias}</b>` : ''}.`, `Hola! Quise pagar el pedido ${codigo} con Mercado Pago y no se completó.`);
+        $('#icon').style.background = '#fdecea'; $('#icon').style.color = '#9b2c1f';
+        return;
+      }
+      if (r === 'pendiente') {
+        mostrar('⏳', 'Tu pago está pendiente', 'Mercado Pago lo está procesando (por ejemplo, si pagaste en efectivo). Cuando se acredite, tu pedido se confirma solo.', `Hola! Pagué el pedido ${codigo} con Mercado Pago y quedó pendiente.`);
+        return;
+      }
+      // Pago aprobado: se confirma con el servidor (el aviso de Mercado Pago puede tardar unos segundos)
+      let intentos = 0;
+      async function revisar() {
+        intentos++;
+        try {
+          const res = await fetch(`/api/pago/estado?p=${id}`, { cache: 'no-store' });
+          const d = await res.json();
+          if (d.pagado) {
+            mostrar('✓', '¡Pago recibido!', `Gracias. Tu pedido <b>${codigo}</b> quedó confirmado${d.total > d.monto ? `. El resto (${money(d.total - d.monto)}) se paga al retirar` : ''}. Te escribimos por WhatsApp para coordinar la entrega.`, `Hola! Ya pagué el pedido ${codigo} con Mercado Pago.`);
+            return;
+          }
+        } catch (e) { /* se reintenta */ }
+        if (intentos < 8) setTimeout(revisar, 2500);
+        else mostrar('✓', '¡Gracias por tu pago!', `Mercado Pago aprobó el pago del pedido <b>${codigo}</b>. En unos minutos lo vemos reflejado y te escribimos por WhatsApp.`, `Hola! Ya pagué el pedido ${codigo} con Mercado Pago.`);
+      }
+      revisar();
+    })();
+  </script>
+</body>
+</html>

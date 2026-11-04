@@ -5514,11 +5514,43 @@
   const EMBED = new URLSearchParams(location.search).has('embed');
   if (EMBED) document.documentElement.classList.add('is-embed');
   // El panel puede mandar una imagen de un pedido para editarla acá
-  window.addEventListener('message', (e) => {
+  let listo = null;
+  const appLista = new Promise((res) => { listo = res; });
+  window.addEventListener('message', async (e) => {
     const d = e.data;
-    if (!d || d.type !== 'te-load-image' || !d.blob) return;
-    const type = /^image\/(png|jpeg|webp)$/.test(d.blob.type) ? d.blob.type : 'image/png';
-    handleFiles([new File([d.blob], d.name || 'imagen.png', { type })]);
+    if (!d) return;
+    if (d.type === 'te-load-image' && d.blob) {
+      await appLista;
+      const type = /^image\/(png|jpeg|webp)$/.test(d.blob.type) ? d.blob.type : 'image/png';
+      handleFiles([new File([d.blob], d.name || 'imagen.png', { type })]);
+    }
+    // Un pedido de DTF de la tienda: abre el lienzo con cada diseño en su lugar
+    if (d.type === 'te-load-sheet' && Array.isArray(d.files) && d.sheet) {
+      await appLista;
+      setBusy(true, 'Armando el lienzo del pedido…');
+      try {
+        const ids = [];
+        for (const f of d.files) {
+          const type = /^image\/(png|jpeg|webp)$/.test(f.blob.type) ? f.blob.type : 'image/png';
+          ids.push(await loadFile(new File([f.blob], f.name || 'diseno.png', { type })));
+        }
+        changeCompose(() => {
+          state.compose.lienzo = {
+            ...newComposeState().lienzo,
+            widthCm: d.sheet.widthCm, heightCm: d.sheet.heightCm, gapMm: d.sheet.gapMm ?? 5,
+            items: d.sheet.items.filter((it) => ids[it.f]).map((it) => ({ id: uid(), imgId: ids[it.f], name: d.files[it.f].name, x: it.x, y: it.y, w: it.w, rot: it.rot || 0 })),
+            selected: [],
+          };
+        });
+        selectTool('lienzo');
+        setStatus(`✓ Lienzo del pedido: ${d.sheet.items.length} copias en ${fmtNum(d.sheet.widthCm)} × ${fmtNum(d.sheet.heightCm)} cm. Revisalo y descargá el PDF para imprimir.`);
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo armar el lienzo del pedido.');
+      } finally {
+        setBusy(false);
+      }
+    }
   });
 
   async function init() {
@@ -5539,6 +5571,7 @@
     const restored = await loadProject();
     selectTool(state.tool, { silent: true });
     updateHistoryButtons();
+    listo();
     if (restored) {
       $('#draft-status').classList.add('saved');
       toast('Recuperamos tu proyecto guardado.', {

@@ -66,6 +66,8 @@ alter table pedidos add column if not exists historial jsonb not null default '[
 alter table pedidos add column if not exists cerrado timestamptz;
 alter table pedidos add column if not exists costo jsonb;
 create index if not exists pedidos_cerrado_idx on pedidos(cerrado desc);
+-- Pago online (Mercado Pago): lo completa solo el servidor cuando el pago se aprueba
+alter table pedidos add column if not exists pago jsonb;
 
 -- ---------- Configuración (cotizador, etc.) ----------
 create table if not exists config (
@@ -122,6 +124,7 @@ begin
   new.historial := jsonb_build_array(jsonb_build_object('estado', 'sena', 'fecha', now()));
   new.cerrado := null;
   new.costo := null;
+  new.pago := null;
   if length(trim(coalesce(new.cliente, ''))) < 2 or length(new.cliente) > 80 then
     raise exception 'Nombre inválido';
   end if;
@@ -131,7 +134,8 @@ begin
   if new.total <= 0 or new.total > 5000000 then
     raise exception 'Total inválido';
   end if;
-  if jsonb_array_length(coalesce(new.imagenes, '[]'::jsonb)) > 6 or length(coalesce(new.notas, '')) > 600 then
+  -- Hasta 40 archivos: los pedidos de DTF traen cada diseño por separado
+  if jsonb_array_length(coalesce(new.imagenes, '[]'::jsonb)) > 40 or length(coalesce(new.notas, '')) > 600 then
     raise exception 'Pedido demasiado grande';
   end if;
   if (select count(*) from pedidos where origen = 'tienda' and telefono = new.telefono and fecha > now() - interval '1 hour') >= 3 then

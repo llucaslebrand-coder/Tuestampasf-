@@ -758,7 +758,7 @@
       <div><dt>Resto al retirar</dt><dd>${money(t.total - senaMonto(t.total))}</dd></div>` : ''}`;
     const sena = senaMonto(t.total);
     $('#pay-help').innerHTML = sena
-      ? `Para <b>confirmar</b> tu pedido se paga una seña de <b>${money(sena)}</b> por transferencia${aliasPago() ? ` al alias <b>${esc(aliasPago())}</b>` : ''}. Te pasamos los datos al enviarlo. Producción en 3 a 5 días desde la seña.`
+      ? `Para <b>confirmar</b> tu pedido se paga una seña de <b>${money(sena)}</b>${window.TEPago && TEPago.disponible(negocio) ? ' con Mercado Pago o' : ''} por transferencia${aliasPago() ? ` al alias <b>${esc(aliasPago())}</b>` : ''}. Te pasamos los datos al enviarlo. Producción en 3 a 5 días desde la seña.`
       : 'Te escribimos por WhatsApp para confirmar el pedido, el pago y la entrega. Producción en 3 a 5 días.';
   }
 
@@ -881,6 +881,15 @@
       $('#ok-alias').textContent = alias || 'te lo pasamos por WhatsApp';
       $('#ok-copy').hidden = !alias;
       $('#ok-vence').textContent = `Si no recibimos la seña en ${VENCE_DIAS} días, el pedido se cancela solo. El resto (${money(p.total - p.sena)}) se paga al retirar.`;
+      // Mercado Pago (si el dueño lo activó en el panel y la web está publicada)
+      const mp = !trampa && window.TEPago && TEPago.disponible(negocio) && modo === 'nube';
+      $('#ok-mp').hidden = !mp;
+      $('#ok-or').hidden = !mp;
+      $('#ok-mp').onclick = async () => {
+        $('#ok-mp').disabled = true;
+        $('#ok-mp').textContent = 'Abriendo Mercado Pago…';
+        try { await TEPago.iniciar(p.id); } catch (e) { toast('No se pudo abrir Mercado Pago. Probá de nuevo o pagá por transferencia.'); $('#ok-mp').disabled = false; $('#ok-mp').textContent = 'Pagar con Mercado Pago'; }
+      };
     }
     const box = $('#ok-mocks');
     box.innerHTML = '';

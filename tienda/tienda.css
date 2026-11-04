@@ -180,6 +180,16 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 .pay-alias .panel-btn { width: auto; margin: 0; padding: 6px 12px; min-height: 34px; }
 .pay-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 
+/* Botón de Mercado Pago */
+.mp-btn {
+  display: block; width: 100%; min-height: 50px; margin: 4px 0 6px; border: 0; border-radius: 12px;
+  background: #009ee3; color: #fff; font: 800 16px var(--font); cursor: pointer;
+}
+.mp-btn:hover { background: #0087c2; }
+.mp-btn:disabled { opacity: .7; cursor: wait; }
+.mp-btn:focus-visible { outline: 3px solid #0d4fa3; outline-offset: 2px; }
+.pay-or { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
+
 /* ---------- Barra inferior ---------- */
 .buybar {
   position: fixed; right: 0; bottom: 0; left: 0; z-index: 120;

@@ -31,6 +31,7 @@
   <script src="config.js" defer></script>
   <script src="../vendor/supabase.min.js" defer></script>
   <script src="mockup-lib.js" defer></script>
+  <script src="pago.js" defer></script>
   <script src="tienda.js" defer></script>
 </head>
 <body class="shop">
@@ -178,6 +179,8 @@
         <div class="pay-box" id="ok-pay" hidden>
           <p class="pay-label">Seña para confirmar</p>
           <p class="pay-amount" id="ok-sena">$ 10.000</p>
+          <button type="button" class="mp-btn" id="ok-mp" hidden>Pagar con Mercado Pago</button>
+          <p class="pay-or" id="ok-or" hidden>o por transferencia</p>
           <div class="pay-alias"><span>Alias</span><b id="ok-alias">tuestampasf</b><button type="button" class="panel-btn" id="ok-copy">⧉ Copiar</button></div>
           <p class="pay-note" id="ok-vence"></p>
         </div>

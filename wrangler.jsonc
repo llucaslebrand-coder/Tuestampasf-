@@ -5,12 +5,14 @@
   // Dirección pública: tuestampasf.llucaslebrand.workers.dev (sin enlaces de vista previa)
   "workers_dev": true,
   "preview_urls": false,
-  // Solo para la visita diaria a Supabase; la web la sirve Cloudflare directamente
+  // worker.js: API de Mercado Pago (/api/...) y visita diaria a Supabase; la web la sirve Cloudflare directamente
   "main": "worker.js",
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    // Las direcciones /api/... van al worker; todo lo demás, a los archivos de la web
+    "run_worker_first": ["/api/*"]
   },
   // Todos los días a las 9:17 (hora de Argentina = 12:17 UTC)
   "triggers": { "crons": ["17 12 * * *"] }
