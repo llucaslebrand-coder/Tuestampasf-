@@ -61,6 +61,11 @@ create index if not exists pedidos_fecha_idx on pedidos(fecha desc);
 alter table pedidos add column if not exists sena numeric not null default 0;
 alter table pedidos add column if not exists sena_pagada boolean not null default false;
 create index if not exists pedidos_tel_idx on pedidos(telefono, fecha desc);
+-- Seguimiento y resultados: fechas de cada paso, día de cierre y costo guardado al entregar
+alter table pedidos add column if not exists historial jsonb not null default '[]';
+alter table pedidos add column if not exists cerrado timestamptz;
+alter table pedidos add column if not exists costo jsonb;
+create index if not exists pedidos_cerrado_idx on pedidos(cerrado desc);
 
 -- ---------- Configuración (cotizador, etc.) ----------
 create table if not exists config (
@@ -114,6 +119,9 @@ begin
   new.estado := 'sena';
   new.sena_pagada := false;
   new.stock_descontado := false;
+  new.historial := jsonb_build_array(jsonb_build_object('estado', 'sena', 'fecha', now()));
+  new.cerrado := null;
+  new.costo := null;
   if length(trim(coalesce(new.cliente, ''))) < 2 or length(new.cliente) > 80 then
     raise exception 'Nombre inválido';
   end if;

@@ -81,6 +81,7 @@
 
   const ICON = {
     home: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     orders: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     stock: '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5" opacity=".5"/>',
     barcode: '<path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/>',
@@ -340,6 +341,7 @@
   const VIEWS = [
     { id: 'inicio', label: 'Inicio', sub: 'Resumen del negocio', icon: 'home', render: renderInicio },
     { id: 'pedidos', label: 'Pedidos', sub: 'Clientes y producción', icon: 'orders', render: renderPedidos },
+    { id: 'resultados', label: 'Resultados', sub: 'Ventas y ganancia', icon: 'chart', render: renderResultados },
     { id: 'stock', label: 'Stock', sub: 'Remeras lisas por talle', icon: 'stock', render: renderStock },
     { id: 'etiquetas', label: 'Códigos de barra', sub: 'Etiquetas para imprimir', icon: 'barcode', render: renderEtiquetas },
     { id: 'cotizador', label: 'Cotizador', sub: 'DTF por cm²', icon: 'quote', render: renderCotizador },
@@ -401,7 +403,7 @@
     const activos = pedidosActivos();
     const recientes = Store.data.pedidos.slice().sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 6);
     const mes = new Date().getMonth();
-    const ventasMes = Store.data.pedidos.filter((p) => p.estado === 'entregado' && new Date(p.fecha).getMonth() === mes).reduce((a, p) => a + Number(p.total || 0), 0);
+    const ventasMes = Store.data.pedidos.filter((p) => p.estado === 'entregado' && fechaCierre(p).getMonth() === mes && fechaCierre(p).getFullYear() === new Date().getFullYear()).reduce((a, p) => a + Number(p.total || 0), 0);
     el.innerHTML = head('Hola 👋', 'Así está Tu Estampa SF hoy.', `
         <button type="button" class="panel-btn" data-act="scan">▦ Escanear</button>
         <button type="button" class="panel-btn" data-act="quote">＄ Cotizar</button>
@@ -422,7 +424,7 @@
           <div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Cliente</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
           ${recientes.map((p) => `<tr data-id="${p.id}" style="cursor:pointer"><td>#${p.numero || '–'}</td><td>${esc(p.cliente)}</td><td><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num">${money(p.total)}</td></tr>`).join('')}
           </tbody></table></div>` : '<p class="empty">Todavía no hay pedidos.</p>'}
-          <p>Ventas entregadas este mes: <b>${money(ventasMes)}</b></p>
+          <p>Ventas entregadas este mes: <b>${money(ventasMes)}</b> · <a href="#resultados">Ver resultados</a></p>
         </section>
       </div>`;
     el.querySelector('[data-act="scan"]').addEventListener('click', openScanner);
@@ -573,6 +575,153 @@
     return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
   }
 
+  /* =========================================================
+     RESULTADOS: ventas, costos y ganancia por período.
+     Un pedido cuenta como venta el día que se entrega (cerrado).
+     ========================================================= */
+  const fechaCierre = (p) => new Date(p.cerrado || ((p.historial || []).slice().reverse().find((h) => h.estado === p.estado) || {}).fecha || p.fecha);
+  /* Costo de un pedido: remeras lisas + film DTF usado (a los valores de hoy si no quedó guardado) */
+  function costoPedido(p) {
+    if (p.costo && p.costo.total != null) return p.costo;
+    const c = cotizador();
+    const costoCm2 = c.metro / (c.ancho * 100) * (1 + c.merma / 100);
+    let remeras = 0, dtf = 0, unidades = 0;
+    (p.items || []).forEach((it) => {
+      const m = modeloDe(it.modelo_id);
+      const cant = Number(it.cantidad) || 1;
+      unidades += cant;
+      remeras += (m ? Number(m.costo) || 0 : 0) * cant;
+      (it.estampas || []).forEach((e) => { dtf += (Number(e.ancho) || 0) * (Number(e.alto) || 0) * costoCm2 * (Number(e.cantidad) || 1) * cant; });
+    });
+    return { remeras: Math.round(remeras), dtf: Math.round(dtf), total: Math.round(remeras + dtf), unidades };
+  }
+
+  let periodo = { tipo: 'mes', desde: '', hasta: '' };
+  function rangoPeriodo() {
+    const hoy = new Date();
+    const d0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    switch (periodo.tipo) {
+      case 'mes-pasado': return [new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1), new Date(hoy.getFullYear(), hoy.getMonth(), 1)];
+      case '30': return [new Date(d0(hoy).getTime() - 29 * 864e5), new Date(d0(hoy).getTime() + 864e5)];
+      case 'anio': return [new Date(hoy.getFullYear(), 0, 1), new Date(hoy.getFullYear() + 1, 0, 1)];
+      case 'otro': {
+        const a = periodo.desde ? new Date(periodo.desde + 'T00:00') : new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const b = periodo.hasta ? new Date(new Date(periodo.hasta + 'T00:00').getTime() + 864e5) : new Date(d0(hoy).getTime() + 864e5);
+        return [a, b];
+      }
+      default: return [new Date(hoy.getFullYear(), hoy.getMonth(), 1), new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)];
+    }
+  }
+
+  function renderResultados(el) {
+    const [desde, hasta] = rangoPeriodo();
+    const enRango = (d) => d >= desde && d < hasta;
+    const pedidos = Store.data.pedidos;
+    const entregados = pedidos.filter((p) => p.estado === 'entregado' && enRango(fechaCierre(p)));
+    const cancelados = pedidos.filter((p) => p.estado === 'cancelado' && enRango(fechaCierre(p)));
+    let ventas = 0, cRem = 0, cDtf = 0, unidades = 0;
+    const porColor = {}, porTalle = {};
+    entregados.forEach((p) => {
+      const c = costoPedido(p);
+      ventas += Number(p.total) || 0; cRem += c.remeras; cDtf += c.dtf; unidades += c.unidades;
+      (p.items || []).forEach((it) => {
+        porColor[it.color] = (porColor[it.color] || 0) + (Number(it.cantidad) || 1);
+        porTalle[it.talle] = (porTalle[it.talle] || 0) + (Number(it.cantidad) || 1);
+      });
+    });
+    const senasRetenidas = cancelados.filter((p) => p.sena_pagada).reduce((a, p) => a + (Number(p.sena) || 0), 0);
+    const ganancia = ventas - cRem - cDtf + senasRetenidas;
+    const margen = ventas ? Math.round((ventas - cRem - cDtf) / ventas * 100) : 0;
+    // En curso (sin importar el período)
+    const enProd = pedidos.filter((p) => p.estado === 'produccion' || p.estado === 'confirmado' || p.estado === 'nuevo');
+    const listos = pedidos.filter((p) => p.estado === 'listo');
+    const sinSena = pedidos.filter((p) => p.estado === 'sena');
+    const aCobrar = [...enProd, ...listos].reduce((a, p) => a + (Number(p.total) || 0) - (p.sena_pagada ? Number(p.sena) || 0 : 0), 0);
+    // Barras por semana (períodos cortos) o por mes (año)
+    const porMes = periodo.tipo === 'anio' || (hasta - desde) > 70 * 864e5;
+    const grupos = [];
+    for (let t = new Date(desde); t < hasta;) {
+      const fin = porMes ? new Date(t.getFullYear(), t.getMonth() + 1, 1) : new Date(t.getTime() + 7 * 864e5);
+      const ps = entregados.filter((p) => { const f = fechaCierre(p); return f >= t && f < fin && f < hasta; });
+      const v = ps.reduce((a, p) => a + (Number(p.total) || 0), 0);
+      const g = ps.reduce((a, p) => a + (Number(p.total) || 0) - costoPedido(p).total, 0);
+      grupos.push({ label: porMes ? t.toLocaleDateString('es-AR', { month: 'short' }) : `${t.getDate()}/${t.getMonth() + 1}`, v, g });
+      t = fin;
+    }
+    const maxV = Math.max(1, ...grupos.map((g) => g.v));
+    const tipos = [['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'], ['30', 'Últimos 30 días'], ['anio', 'Este año'], ['otro', 'Elegir fechas']];
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const top = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+    el.innerHTML = head('Resultados', 'Ventas, costos y ganancia de los pedidos entregados. Cada pedido cuenta el día que lo entregás.',
+      `<button type="button" class="panel-btn" id="rs-csv" ${entregados.length ? '' : 'disabled'}>↓ Descargar planilla</button>`) + `
+      <div class="tabs" role="group" aria-label="Período">${tipos.map(([k, l]) => `<button type="button" data-p="${k}" aria-pressed="${periodo.tipo === k}">${l}</button>`).join('')}</div>
+      ${periodo.tipo === 'otro' ? `<div class="form-grid box" style="margin-bottom:14px"><label class="field"><span class="field-label">Desde</span><input type="date" id="rs-desde" value="${iso(desde)}"></label><label class="field"><span class="field-label">Hasta</span><input type="date" id="rs-hasta" value="${iso(new Date(hasta.getTime() - 864e5))}"></label></div>` : ''}
+      <p class="field-help" style="margin:-4px 0 12px">Del ${fmtDate(desde)} al ${fmtDate(new Date(hasta.getTime() - 864e5))}</p>
+      <div class="stats">
+        <div class="stat"><small>Ventas</small><strong>${money(ventas)}</strong><span>${entregados.length} ${entregados.length === 1 ? 'pedido entregado' : 'pedidos entregados'}</span></div>
+        <div class="stat"><small>Ganancia</small><strong style="color:#1e7a3c">${money(ganancia)}</strong><span>margen ${margen} %</span></div>
+        <div class="stat"><small>Remeras vendidas</small><strong>${unidades}</strong><span>ticket promedio ${money(entregados.length ? ventas / entregados.length : 0)}</span></div>
+        <div class="stat"><small>Costos</small><strong>${money(cRem + cDtf)}</strong><span>remeras ${money(cRem)} · DTF ${money(cDtf)}</span></div>
+      </div>
+      <div class="grid-2">
+        <section class="box"><h2>Cuentas del período</h2>
+          <dl class="breakdown">
+            <div><dt>Ventas (pedidos entregados)</dt><dd>${money(ventas)}</dd></div>
+            <div><dt>Costo de las remeras lisas</dt><dd>− ${money(cRem)}</dd></div>
+            <div><dt>Costo del film DTF</dt><dd>− ${money(cDtf)}</dd></div>
+            ${senasRetenidas ? `<div><dt>Señas de pedidos cancelados</dt><dd>+ ${money(senasRetenidas)}</dd></div>` : ''}
+            <hr>
+            <div class="profit"><dt><b>Ganancia</b></dt><dd>${money(ganancia)}</dd></div>
+          </dl>
+          <p class="field-help">El costo de las remeras sale de Modelos y precios, y el del DTF, del Cotizador. Queda guardado en cada pedido el día que se entrega, así un cambio de precios no altera los meses anteriores.</p>
+        </section>
+        <section class="box"><h2>${porMes ? 'Ventas por mes' : 'Ventas por semana'}</h2>
+          ${entregados.length ? `<div class="bars" role="img" aria-label="Ventas y ganancia por ${porMes ? 'mes' : 'semana'}">${grupos.map((g) => `
+            <div class="bar-col" title="${g.label}: ventas ${money(g.v)}, ganancia ${money(g.g)}">
+              <span class="bar-val">${g.v ? money(g.v).replace('$ ', '$') : ''}</span>
+              <div class="bar-track"><i class="bar-v" style="height:${g.v / maxV * 100}%"></i><i class="bar-g" style="height:${Math.max(0, g.g) / maxV * 100}%"></i></div>
+              <small>${g.label}</small>
+            </div>`).join('')}</div>
+          <p class="legend"><span><i class="bar-v"></i>Ventas</span><span><i class="bar-g"></i>Ganancia</span></p>` : '<p class="empty">Todavía no hay pedidos entregados en este período.</p>'}
+        </section>
+      </div>
+      <div class="grid-2">
+        <section class="box"><h2>En curso ahora</h2>
+          <dl class="breakdown">
+            <div><dt>Esperando seña</dt><dd>${sinSena.length}</dd></div>
+            <div><dt>En producción</dt><dd>${enProd.length}</dd></div>
+            <div><dt>Listos para entregar</dt><dd>${listos.length}</dd></div>
+            <hr>
+            <div class="profit"><dt><b>Por cobrar al entregar</b></dt><dd>${money(aCobrar)}</dd></div>
+          </dl>
+        </section>
+        <section class="box"><h2>Lo más vendido</h2>
+          ${entregados.length ? `<div class="grid-2" style="gap:10px">
+            <table class="tbl"><thead><tr><th>Color</th><th class="num">Unid.</th></tr></thead><tbody>${top(porColor).map(([k, n]) => `<tr><td>${esc(k)}</td><td class="num">${n}</td></tr>`).join('')}</tbody></table>
+            <table class="tbl"><thead><tr><th>Talle</th><th class="num">Unid.</th></tr></thead><tbody>${top(porTalle).map(([k, n]) => `<tr><td>T${esc(k)}</td><td class="num">${n}</td></tr>`).join('')}</tbody></table>
+          </div>` : '<p class="empty">Sin ventas en este período.</p>'}
+        </section>
+      </div>
+      <section class="box"><h2>Pedidos entregados</h2>
+        ${entregados.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Entregado</th><th>Cliente</th><th class="num">Venta</th><th class="num">Costo</th><th class="num">Ganancia</th></tr></thead><tbody>
+          ${entregados.slice().sort((a, b) => fechaCierre(b) - fechaCierre(a)).map((p) => { const c = costoPedido(p); return `<tr data-id="${p.id}" style="cursor:pointer"><td>#${p.numero || '–'}</td><td>${fmtDate(fechaCierre(p))}</td><td>${esc(p.cliente)}</td><td class="num">${money(p.total)}</td><td class="num">${money(c.total)}</td><td class="num"><b>${money(p.total - c.total)}</b></td></tr>`; }).join('')}
+        </tbody></table></div>` : '<p class="empty">Cuando marques pedidos como «Entregado», aparecen acá.</p>'}
+      </section>`;
+
+    $$('.tabs button', el).forEach((b) => b.addEventListener('click', () => { periodo.tipo = b.dataset.p; refresh(); }));
+    const dD = $('#rs-desde', el), dH = $('#rs-hasta', el);
+    if (dD) dD.addEventListener('change', () => { periodo.desde = dD.value; refresh(); });
+    if (dH) dH.addEventListener('change', () => { periodo.hasta = dH.value; refresh(); });
+    $$('tr[data-id]', el).forEach((tr) => tr.addEventListener('click', () => pedidoDetalle(tr.dataset.id)));
+    $('#rs-csv', el).addEventListener('click', () => {
+      const filas = [['Numero', 'Entregado', 'Cliente', 'WhatsApp', 'Detalle', 'Venta', 'Costo remeras', 'Costo DTF', 'Ganancia']];
+      entregados.forEach((p) => { const c = costoPedido(p); filas.push([p.numero || '', fmtDate(fechaCierre(p)), p.cliente, p.telefono || '', itemsResumen(p).join(' | '), p.total, c.remeras, c.dtf, p.total - c.total]); });
+      const csv = '﻿' + filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `resultados-${iso(desde)}-a-${iso(new Date(hasta.getTime() - 864e5))}.csv`);
+    });
+  }
+
   /* Recorrido de un pedido: un botón para pasar al paso siguiente */
   const FLUJO = [['sena', 'Seña'], ['produccion', 'Producción'], ['listo', 'Listo'], ['entregado', 'Entregado']];
   function siguientePaso(p) {
@@ -583,7 +732,13 @@
     return null;
   }
   async function cambiarEstado(id, nuevo, extra = {}) {
-    await Store.save('pedidos', { ...Store.data.pedidos.find((x) => x.id === id), ...extra, estado: nuevo });
+    const prev = Store.data.pedidos.find((x) => x.id === id);
+    const ahora = new Date().toISOString();
+    const historial = [...(prev.historial || []), { estado: nuevo, fecha: ahora }];
+    const cierre = ['entregado', 'cancelado'].includes(nuevo)
+      ? { cerrado: ahora, costo: nuevo === 'entregado' ? costoPedido({ ...prev, costo: null }) : prev.costo || null }
+      : { cerrado: null };
+    await Store.save('pedidos', { ...prev, ...extra, ...cierre, historial, estado: nuevo });
     const cur = Store.data.pedidos.find((x) => x.id === id);
     // Al entrar en producción se descuentan solas las remeras lisas del stock
     if (['produccion', 'listo', 'entregado'].includes(nuevo) && !cur.stock_descontado) await descontarStockPedido(cur, true);
@@ -600,7 +755,9 @@
       ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
       ${p.estado !== 'cancelado' ? `<ol class="flujo" aria-label="Recorrido del pedido">${FLUJO.map(([k, l], i) => {
         const pos = p.estado === 'nuevo' || p.estado === 'confirmado' ? 0.5 : FLUJO.findIndex(([kk]) => kk === p.estado);
-        return `<li class="${i < pos ? 'is-done' : ''} ${i === pos ? 'is-now' : ''}">${l}</li>`;
+        const h = (p.historial || []).slice().reverse().find((x) => x.estado === k);
+        const f = h ? new Date(h.fecha) : (k === 'sena' && p.origen === 'tienda' ? new Date(p.fecha) : null);
+        return `<li class="${i < pos ? 'is-done' : ''} ${i === pos ? 'is-now' : ''}">${l}${f && i <= pos ? `<small>${f.getDate()}/${f.getMonth() + 1}</small>` : ''}</li>`;
       }).join('')}</ol>` : ''}
       ${siguientePaso(p) ? `<button type="button" class="download" id="pd-next">${siguientePaso(p).label}</button>` : ''}
       ${p.notas ? `<p class="panel-note">${esc(p.notas)}</p>` : ''}

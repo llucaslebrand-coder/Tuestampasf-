@@ -101,6 +101,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .st-nuevo { background: #eaf1fb; color: #0d4fa3; }
 .flujo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0; padding: 0; list-style: none; counter-reset: f; }
 .flujo li { counter-increment: f; padding: 8px 4px; border-radius: 8px; background: #eef0f4; color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; }
+.flujo li small { display: block; font-weight: 600; opacity: .8; }
 .flujo li::before { content: counter(f) ". "; }
 .flujo li.is-done { background: #e3f7ea; color: #1e5f33; }
 .flujo li.is-done::before { content: "✓ "; }
@@ -244,3 +245,16 @@ a.tool-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px
 .stock-matrix th:first-child, .stock-matrix td:first-child { position: sticky; left: 0; z-index: 1; background: var(--white); }
 .stock-matrix th:first-child { background: #f6f7f9; z-index: 2; }
 @media (max-width: 640px) { .stock-matrix th.sw-col { min-width: 120px; } }
+
+/* ---------- Resultados ---------- */
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 190px; padding-top: 18px; overflow-x: auto; }
+.bar-col { flex: 1 0 34px; display: grid; grid-template-rows: auto 1fr auto; height: 100%; gap: 4px; text-align: center; }
+.bar-col small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.bar-val { color: var(--navy); font-size: 10px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bar-track { position: relative; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-bottom: 1px solid var(--line); }
+.bar-track i { width: 40%; max-width: 18px; border-radius: 4px 4px 0 0; }
+.bar-v { background: var(--brand); }
+.bar-g { background: #1e7a3c; }
+.legend { display: flex; gap: 14px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
