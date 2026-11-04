@@ -1,0 +1,52 @@
+TU ESTAMPA SF — Herramientas + Panel + Tienda
+=============================================
+
+CARPETAS
+- index.html ............ ENTRADA ÚNICA (el enlace para Instagram): página del
+                          negocio con logo, colores, cómo funciona, precios y
+                          contacto. Botón "Diseñá tu remera" → la tienda.
+                          Arriba a la derecha está el candado "Administrador".
+- tienda/index.html ..... Diseñador para clientes: eligen remera, color y talle,
+                          suben su diseño, lo ven en foto (en percha, puesta o
+                          plana), lo ubican y hacen el pedido.
+- panel/index.html ...... Parte del administrador: pedidos, stock, códigos de
+                          barra, cotizador DTF, modelos, "Editar imagen"
+                          (las 10 herramientas) y ajustes.
+- herramientas.html ..... Las herramientas de edición solas (las usa el panel).
+- tienda/config.js ...... WhatsApp del negocio y conexión a Supabase.
+- img/mockups/fotos/ .... Fotos de las remeras (6 colores, percha y modelo, frente
+                          y espalda). Las usan la tienda y la herramienta Mockup.
+- supabase/schema.sql ... Base de datos para la nube (Supabase).
+- vendor/ ............... Librerías incluidas (IA, códigos de barra, escáner, Supabase).
+
+CÓMO PROBAR
+1. Descomprimí el zip.
+2. Abrí index.html con doble clic: es la página de inicio (funciona en "modo local").
+3. Hacé un pedido de prueba y entrá con el candado "Administrador":
+   aparece en Panel → Pedidos con la imagen y la medida exacta de cada estampa.
+4. En Panel → Ajustes → Tienda cargá el WhatsApp del negocio.
+
+PARA USARLO DE VERDAD (celular, PC y clientes)
+1. ✓ Base creada en Supabase (proyecto Tuestampasf) y conectada en tienda/config.js.
+2. ✓ Usuario administrador creado (tu email).
+3. Publicá la carpeta en Netlify (app.netlify.com/drop) con el nombre tuestampasf.
+   Primera vez: entrá con el candado, iniciá sesión y el panel crea solo
+   los modelos y las 60 combinaciones de stock en la nube.
+4. El enlace para Instagram es: https://TU-SITIO.netlify.app/
+   Con Supabase conectado, el panel pide tu email y contraseña.
+
+SEÑA Y FILTRO DE PEDIDOS
+- Los pedidos de la tienda llegan como "Esperando seña" (pestaña aparte en Pedidos).
+  No descuentan stock. Cuando llega el comprobante, abrí el pedido y tocá
+  "Seña recibida": pasa a Confirmado.
+- Si no pagan la seña en 3 días, se borran solos (con sus imágenes).
+- Alias y monto de la seña: Panel → Ajustes → Tienda.
+- La base frena pedidos falsos: WhatsApp argentino válido, máximo 3 pedidos
+  por hora por número y 30 por hora en total.
+
+IMPORTANTE
+- El escáner con cámara necesita que la web esté publicada (https).
+  Con un lector USB de códigos funciona siempre.
+- Las etiquetas se imprimen al 100 %, sin "ajustar a página".
+- La clave "anon public" es pública a propósito: la seguridad la dan las reglas
+  del schema.sql (los clientes solo pueden crear pedidos y ver modelos/precios).

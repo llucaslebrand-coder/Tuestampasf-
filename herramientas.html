@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- SEO básico -->
+  <title>Herramientas Tu Estampa SF</title>
+  <meta name="description" content="Creá semitonos, quitá fondos y semitransparencias, y mejorá fotos e ilustraciones para DTF.">
+  <meta name="theme-color" content="#0d4fa3">
+
+  <!-- Open Graph / redes (reemplazar la URL y la imagen cuando el sitio esté publicado) -->
+  <meta property="og:title" content="Herramientas Tu Estampa SF">
+  <meta property="og:description" content="Herramientas online simples para preparar tus diseños DTF.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tu-dominio.com/">
+  <meta property="og:image" content="img/og.png">
+  <meta property="og:image:alt" content="Tu Estampa SF Herramientas">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Herramientas Tu Estampa SF">
+  <meta name="twitter:description" content="Herramientas online para preparar imágenes DTF.">
+
+  <link rel="icon" href="img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <!-- Enlace para saltar al contenido (accesibilidad con teclado) -->
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+  <div class="app-shell">
+
+    <!-- =====================================================
+         1. HEADER
+         Barra fija con degradado de marca, animación de
+         "energía" de fondo, logo, ajustes de la herramienta
+         y accesos a Mis creaciones / Mi cuenta.
+         ===================================================== -->
+    <div class="tool-header-dock">
+      <header class="topbar">
+
+        <!-- Fondo animado decorativo: 3 arcos + chispas (las chispas las genera script.js) -->
+        <div class="header-energy" aria-hidden="true">
+          <span class="header-energy-arc"></span>
+          <span class="header-energy-arc"></span>
+          <span class="header-energy-arc"></span>
+        </div>
+
+        <!-- Marca: logo (recortado de captura; reemplazar por el archivo original en alta calidad) -->
+        <a class="brand" href="#inicio" aria-label="Tu Estampa SF Herramientas, ir al inicio">
+          <span class="brand-logo brand-logo--round">
+            <img src="img/logo.png" alt="" width="50" height="50" fetchpriority="high">
+          </span>
+          <span class="brand-name">Tu Estampa SF</span>
+          <i aria-hidden="true"></i>
+          <small>Herramientas</small>
+        </a>
+
+        <!-- Controles de la herramienta activa (con scroll horizontal en pantallas chicas) -->
+        <div class="header-controls-scroll" role="toolbar" aria-label="Controles de la herramienta">
+          <!-- Historial: borrador, restaurar, deshacer y rehacer -->
+          <div class="tool-header-bar history-bar">
+            <span class="draft-status" id="draft-status" role="status" aria-live="polite" title="Borrador guardado en este dispositivo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13H5Z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
+              <span>Borrador</span>
+            </span>
+            <div class="tool-header-item">
+              <button type="button" id="restore-btn" aria-label="Restaurar ajustes originales" title="Restaurar" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+            </div>
+            <div class="tool-header-item">
+              <button type="button" id="undo-btn" aria-label="Deshacer" title="Deshacer (Ctrl+Z)" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+            </div>
+            <div class="tool-header-item">
+              <button type="button" id="redo-btn" aria-label="Rehacer" title="Rehacer (Ctrl+Y)" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+              </button>
+            </div>
+          </div>
+          <span class="header-divider" aria-hidden="true"></span>
+          <!-- Botones de ajustes de la herramienta activa (los genera script.js) -->
+          <nav class="tool-header-bar" id="tool-settings-toolbar" aria-label="Ajustes de la herramienta"></nav>
+        </div>
+
+        <!-- Accesos de la cuenta -->
+        <a href="#mis-creaciones" class="member-pill" id="open-creations" aria-label="Mis creaciones" title="Mis creaciones">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3H5a2 2 0 0 0-2 2v11"/><rect x="7" y="7" width="14" height="14" rx="2"/><circle cx="11.5" cy="11.5" r="1"/><path d="m7 18 4-4 3 3 3-4 4 5"/></svg>
+          <b class="library-nav-label">Mis creaciones</b>
+        </a>
+        <a href="#mi-cuenta" class="member-pill member-pill--account" id="open-account" aria-label="Mi cuenta">
+          <span class="member-dot" aria-hidden="true"></span>
+          <svg class="account-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <b class="library-nav-label">Mi cuenta</b>
+        </a>
+      </header>
+    </div>
+
+    <div class="workspace" id="inicio">
+
+      <!-- =====================================================
+           2. SIDEBAR — menú de herramientas
+           Escritorio: columna con nombre y descripción.
+           Tablet: solo íconos. Celular: barra horizontal con scroll.
+           ===================================================== -->
+      <aside class="sidebar">
+        <p class="sidebar-title" id="tools-title">Herramientas</p>
+
+        <nav class="tool-list" aria-labelledby="tools-title">
+          <button type="button" class="tool-link active" data-tool="mejorar-foto" aria-current="true" title="Mejorar fotografía">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8" cy="9" r="1.7"/><path d="m5.5 17 4.2-4.2 2.8 2.5 2.2-2 3.8 3.7"/></svg></b>
+            <span><strong>Mejorar fotografía</strong><small>Retratos y fotos reales</small></span>
+            <i class="tool-ai-badge">IA</i>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="mejorar-ilustracion" title="Mejorar ilustración">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 17 1.1-4.2L16.4 2.5l3.1 3.1L9.2 15.9Z"/><path d="m6.1 12.8 3.1 3.1M14.8 4.1l3.1 3.1M14.5 19.5h5M17 17v5"/></svg></b>
+            <span><strong>Mejorar ilustración</strong><small>Dibujos y anime</small></span>
+            <i class="tool-ai-badge">IA</i>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="eliminar-fondo" title="Eliminar fondo">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a6 6 0 0 1 12 0v2M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4"/></svg></b>
+            <span><strong>Eliminar fondo</strong><small>Sujetos con IA</small></span>
+            <i class="tool-ai-badge">IA</i>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="editar-colores" title="Editar colores">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m14.7 3.3 6 6-2.2 2.2-1.2-1.2-6.4 6.4-3.6.7.7-3.6 6.4-6.4-1.2-1.2Z"/><path d="m12.6 8.4 3 3M4 19h4M4 22h4M10 19h2M10 22h2"/></svg></b>
+            <span><strong>Editar colores</strong><small>Eliminá o reemplazá un color</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="semitono" title="Crear semitono">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.2"/><circle cx="12" cy="6" r="1.8"/><circle cx="18" cy="6" r="2.4"/><circle cx="6" cy="12" r="1.8"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="12" r="1.2"/><circle cx="6" cy="18" r="2.4"/><circle cx="12" cy="18" r="1.2"/><circle cx="18" cy="18" r="1.8"/></svg></b>
+            <span><strong>Crear semitono</strong><small>Por negro, blanco o color</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="semitransparencias" title="Quitar semitransparencias">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor" opacity=".34" stroke="none"/><path d="M12 4v16"/></svg></b>
+            <span><strong>Semitransparencias</strong><small>Alpha sólido</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="efectos" title="Efectos">
+            <b aria-hidden="true"><svg viewBox="0 0 32 32" fill="currentColor"><path fill-rule="evenodd" d="m6 3 3 2 2-2 3 1 2-2 2 3 3-2 1 2 4-1-1 4 3 1-2 3 3 2-2 3 1 3-3 1 2 4-4-1-1 3-3-2-2 3-3-2-3 1-1-3-3 1 1-4-3-1 2-3-2-2 2-3-1-3 3-1Z M10 9l-2 4 2 2-1 6 5 2 4-2 4 1 1-6-2-2 1-5-6 1-3-2Z"/><path d="m2 5 2-1 1 2-2 1ZM27 3h2v2h-2ZM29 23l2 1-1 2-2-1ZM4 28h2v2H4Z"/></svg></b>
+            <span><strong>Efectos</strong><small>Bordes grunge y desgaste</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="diseno" title="Crear diseño">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6 4-4a2.1 2.1 0 0 1 3 3l-4 4-6 6-3-3 6-6Z"/><path d="M8 13c-5-1-3 6-6 7 4 2 9-1 8-5"/><path d="m14 6 3 3"/></svg></b>
+            <span><strong>Crear diseño</strong><small>Diseños para redes y estampados</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="mockup" title="Crear mockup">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.2 5 2.3-2h3l2.3 2 4.2 1.8-2 4-2.2-1V21H8.2V9.8L6 10.8l-2-4Z"/><path d="M10.5 3a2 2 0 0 0 3 0"/></svg></b>
+            <span><strong>Crear mockup</strong><small>Remeras y foto propia</small></span>
+          </button>
+
+          <button type="button" class="tool-link" data-tool="lienzo" title="Armar lienzo DTF">
+            <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><rect x="8" y="6" width="4" height="5" rx=".7"/><rect x="13.5" y="6" width="2.5" height="3" rx=".5"/><rect x="8" y="13" width="8" height="5" rx=".7"/></svg></b>
+            <span><strong>Armar lienzo DTF</strong><small>58 cm × alto libre</small></span>
+          </button>
+        </nav>
+
+        <!-- Aviso de privacidad -->
+        <div class="privacy-tip" role="note">
+          <b aria-hidden="true">i</b>
+          <p><strong>Guardado temporal privado</strong>Tu proyecto queda en este dispositivo para recuperarlo si recargás la página.</p>
+        </div>
+      </aside>
+
+      <!-- =====================================================
+           3. ÁREA PRINCIPAL — editor de la herramienta activa
+           Título, vista previa con zoom, descarga y accesos
+           para enviar el resultado a otra herramienta.
+           ===================================================== -->
+      <main id="contenido" class="main-panel" tabindex="-1">
+        <div class="compact-tool-workspace">
+
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="tool-eyebrow">Herramienta 01</p>
+              <h1 id="tool-title">Mejorar fotografía</h1>
+              <p id="tool-desc">Restaurá fotos y retratos con más nitidez, menos ruido y mayor resolución.</p>
+            </div>
+            <div class="quality" id="tool-quality"><strong>2×</strong><span>Mejora</span></div>
+          </div>
+
+          <section class="card preview-card" aria-labelledby="tool-title">
+            <input class="sr-only" id="file-input" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Subir imagen">
+            <input class="sr-only" id="extra-file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Agregar imágenes">
+
+            <!-- Controles de la vista previa -->
+            <div class="tool-preview-controls">
+              <button type="button" class="tool-upload-shortcut" id="upload-shortcut" title="Subir o cambiar imagen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg>
+                <span id="upload-shortcut-label">Subir imagen</span>
+              </button>
+              <button type="button" class="preview-chip" id="settings-shortcut" aria-controls="tool-settings-panel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+                <span>Ajustes</span>
+              </button>
+              <span class="panel-chips" id="panel-chips"></span>
+              <button type="button" class="preview-chip" id="compare-toggle" aria-pressed="false" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 2v20"/></svg>
+                <span>Comparar</span>
+              </button>
+              <div class="bg-switch" role="group" aria-label="Fondo de la vista previa">
+                <button type="button" data-bg="checker" aria-pressed="true" title="Fondo cuadriculado"><i class="sw sw-checker"></i></button>
+                <button type="button" data-bg="white" aria-pressed="false" title="Fondo blanco"><i class="sw sw-white"></i></button>
+                <button type="button" data-bg="black" aria-pressed="false" title="Fondo negro"><i class="sw sw-black"></i></button>
+                <button type="button" data-bg="sky" aria-pressed="false" title="Fondo celeste"><i class="sw sw-sky"></i></button>
+                <button type="button" data-bg="pink" aria-pressed="false" title="Fondo rosa"><i class="sw sw-pink"></i></button>
+                <label class="bg-custom" title="Otro color de fondo"><input type="color" id="bg-custom" value="#0d4fa3" aria-label="Elegir color de fondo"><i class="sw sw-custom"></i></label>
+              </div>
+              <div class="zoom-controls" role="group" aria-label="Zoom">
+                <button type="button" id="zoom-out" aria-label="Alejar">−</button>
+                <button type="button" id="zoom-fit" class="zoom-value" title="Ajustar a la pantalla">100%</button>
+                <button type="button" id="zoom-in" aria-label="Acercar">+</button>
+              </div>
+            </div>
+
+            <!-- Tira de diseños (Crear diseño) -->
+            <div class="pages-strip" id="pages-strip" hidden></div>
+
+            <!-- Vista previa -->
+            <div class="viewport-wrap">
+            <div class="side-tools" id="side-tools" role="toolbar" aria-label="Agregar al diseño" hidden></div>
+            <div class="canvas-viewport bg-checker" id="viewport">
+              <p class="viewer-hint" id="viewer-hint" hidden></p>
+              <div class="dropzone" id="dropzone">
+                <button type="button" class="dropzone-button" id="dropzone-button">
+                  <span class="dropzone-plus" aria-hidden="true">+</span>
+                  <strong>Subir imagen</strong>
+                  <small>PNG, JPG o WEBP · Máx. 100 MB</small>
+                </button>
+                <p class="dropzone-hint">También podés arrastrarla o pegarla con <kbd>Ctrl</kbd> + <kbd>V</kbd></p>
+              </div>
+              <div class="stage" id="stage" hidden>
+                <canvas id="result-canvas" aria-label="Vista previa del resultado" role="img"></canvas>
+                <canvas id="before-canvas" class="before-canvas" hidden aria-hidden="true"></canvas>
+                <div class="compare-handle" id="compare-handle" hidden role="slider" tabindex="0"
+                     aria-label="Comparar antes y después" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+              </div>
+              <div class="busy" id="busy" hidden><span class="spinner" aria-hidden="true"></span><b id="busy-text" role="status" aria-live="polite">Procesando…</b><button type="button" class="busy-cancel" id="busy-cancel" hidden>Cancelar</button></div>
+            </div>
+            </div>
+            <p class="zoom-hint"><span class="hint-desktop">Zoom: <kbd>Ctrl</kbd> + rueda del mouse</span><span class="hint-touch">Zoom: separá o juntá dos dedos</span></p>
+            <p class="status" id="status" role="status" aria-live="polite"></p>
+
+            <div class="extra-actions" id="extra-actions"></div>
+            <dl class="output-info" id="output-info" hidden></dl>
+            <button type="button" class="download" id="download-btn" disabled>↓ Descargar PNG</button>
+            <button type="button" class="download" id="download-btn-2" hidden></button>
+            <div class="result-actions" id="result-actions"></div>
+            <p class="download-note" id="download-note">La descarga entrega la medida elegida con un mínimo de 300 DPI.</p>
+          </section>
+        </div>
+
+        <!-- Panel flotante de ajustes (se llena según la herramienta) -->
+        <div class="tool-settings-anchor">
+          <section id="tool-settings-panel" class="tool-settings-panel" hidden aria-labelledby="settings-title">
+            <header>
+              <h2 id="settings-title">Ajustes</h2>
+              <button type="button" id="settings-close" aria-label="Cerrar ajustes" title="Cerrar">×</button>
+            </header>
+            <div class="tool-settings-content" id="settings-content"></div>
+          </section>
+        </div>
+
+        <!-- =====================================================
+             5. FOOTER
+             ===================================================== -->
+        <footer class="site-footer">
+          <strong>Tu Estampa SF</strong>
+          <span>Herramientas simples para estampar mejor.</span>
+        </footer>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- =====================================================
+       Ventanas: Mis creaciones y Mi cuenta
+       ===================================================== -->
+  <dialog class="modal" id="creations-dialog" aria-labelledby="creations-title">
+    <header class="modal-head">
+      <h2 id="creations-title">Mis creaciones</h2>
+      <button type="button" class="modal-close" data-close aria-label="Cerrar">×</button>
+    </header>
+    <p class="modal-sub">Se guardan solo en este dispositivo. Cada descarga se agrega acá automáticamente.</p>
+    <div class="creations-grid" id="creations-grid"></div>
+  </dialog>
+
+  <dialog class="modal" id="account-dialog" aria-labelledby="account-title">
+    <header class="modal-head">
+      <h2 id="account-title">Mi cuenta</h2>
+      <button type="button" class="modal-close" data-close aria-label="Cerrar">×</button>
+    </header>
+    <p>Las cuentas de usuario todavía no están disponibles. Por ahora todo se guarda de forma privada en este dispositivo.</p>
+    <p>¿Querés pedir tus estampados? Escribinos por Instagram:</p>
+    <a class="download modal-link" href="https://www.instagram.com/tuestampasf" target="_blank" rel="noopener">@tuestampasf en Instagram</a>
+    <button type="button" class="canvas-send danger" id="clear-data">Borrar todos los datos guardados en este dispositivo</button>
+  </dialog>
+
+  <!-- Avisos breves -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

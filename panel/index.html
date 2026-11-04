@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel Tu Estampa SF</title>
+  <meta name="description" content="Panel interno de Tu Estampa SF: pedidos, stock de remeras, códigos de barra, cotizador DTF y editor de imágenes.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0d4fa3">
+  <link rel="icon" href="../img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="../img/logo.png">
+  <!-- Estética compartida con las herramientas -->
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="panel.css">
+  <script src="../tienda/config.js" defer></script>
+  <script src="../vendor/supabase.min.js" defer></script>
+  <script src="panel.js" defer></script>
+</head>
+<body class="panel-body">
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+  <div class="app-shell">
+    <!-- =====================================================
+         HEADER (misma barra que las herramientas)
+         ===================================================== -->
+    <div class="tool-header-dock">
+      <header class="topbar">
+        <div class="header-energy" aria-hidden="true">
+          <span class="header-energy-arc"></span>
+          <span class="header-energy-arc"></span>
+          <span class="header-energy-arc"></span>
+        </div>
+        <a class="brand" href="#inicio" aria-label="Tu Estampa SF Panel, ir al inicio">
+          <span class="brand-logo brand-logo--round"><img src="../img/logo.png" alt="" width="50" height="50"></span>
+          <span class="brand-name">Tu Estampa SF</span>
+          <i aria-hidden="true"></i>
+          <small>Panel</small>
+        </a>
+        <div class="header-controls-scroll"></div>
+        <a class="member-pill" href="../index.html" title="Ver la tienda como la ven tus clientes"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16l-1.5 12a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2Z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg><b class="library-nav-label">Ver tienda</b></a>
+        <span class="sync-pill" id="sync-pill" role="status" aria-live="polite"><span class="sync-dot"></span><b id="sync-text">Cargando…</b></span>
+        <button type="button" class="member-pill" id="logout-btn" hidden>Salir</button>
+      </header>
+    </div>
+
+    <div class="workspace" id="inicio-ws">
+      <!-- =====================================================
+           MENÚ LATERAL
+           ===================================================== -->
+      <aside class="sidebar">
+        <p class="sidebar-title" id="nav-title">Panel</p>
+        <nav class="tool-list" aria-labelledby="nav-title" id="nav"></nav>
+        <div class="privacy-tip" role="note" id="mode-tip">
+          <b aria-hidden="true">i</b>
+          <p><strong id="mode-tip-title">Modo local</strong><span id="mode-tip-text">Los datos quedan en este dispositivo. Conectá Supabase en Ajustes para usarlos desde el celular y la PC.</span></p>
+        </div>
+      </aside>
+
+      <!-- =====================================================
+           CONTENIDO (cada sección se dibuja desde panel.js)
+           ===================================================== -->
+      <main id="contenido" class="main-panel panel-main" tabindex="-1">
+        <div class="panel-wrap" id="view"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Pantalla de inicio de sesión (solo con Supabase) -->
+  <div class="login" id="login" hidden>
+    <form class="login-card card" id="login-form">
+      <img src="../img/logo.png" alt="" width="72" height="72">
+      <h1>Panel Tu Estampa SF</h1>
+      <p>Ingresá con tu usuario de Supabase.</p>
+      <label class="field"><span class="field-label">Email</span><input type="email" id="login-email" autocomplete="username" required></label>
+      <label class="field"><span class="field-label">Contraseña</span><input type="password" id="login-pass" autocomplete="current-password" required></label>
+      <p class="status is-error" id="login-error" role="alert"></p>
+      <button type="submit" class="download">Ingresar</button>
+      <button type="button" class="panel-btn" id="login-local">Usar en modo local (sin nube)</button>
+    </form>
+  </div>
+
+  <!-- Ventana genérica -->
+  <dialog class="modal" id="modal" aria-labelledby="modal-title">
+    <header class="modal-head">
+      <h2 id="modal-title">Título</h2>
+      <button type="button" class="modal-close" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div id="modal-body"></div>
+  </dialog>
+
+  <!-- Escáner de códigos de barra -->
+  <dialog class="modal scanner" id="scanner" aria-labelledby="scanner-title">
+    <header class="modal-head">
+      <h2 id="scanner-title">Escanear remeras</h2>
+      <button type="button" class="modal-close" data-close aria-label="Cerrar">×</button>
+    </header>
+    <div class="segmented" role="group" aria-label="Qué hacer al escanear" id="scan-mode">
+      <button type="button" data-v="in" aria-pressed="true">＋ Ingreso</button>
+      <button type="button" data-v="out" aria-pressed="false">− Venta / salida</button>
+      <button type="button" data-v="look" aria-pressed="false">Consultar</button>
+    </div>
+    <div class="scan-video">
+      <video id="scan-video" playsinline muted></video>
+      <span class="scan-frame" aria-hidden="true"></span>
+      <p class="scan-msg" id="scan-msg">Apuntá la cámara al código de barras.</p>
+    </div>
+    <form class="scan-manual" id="scan-manual">
+      <label class="sr-only" for="scan-code">Código</label>
+      <input type="text" id="scan-code" placeholder="O escribí / usá un lector USB: TE-U-BLA-01" autocomplete="off">
+      <button type="submit" class="panel-btn primary">OK</button>
+    </form>
+    <div class="scan-result" id="scan-result" aria-live="polite"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
