@@ -5,6 +5,8 @@
   // Dirección pública: tuestampasf.llucaslebrand.workers.dev (sin enlaces de vista previa)
   "workers_dev": true,
   "preview_urls": false,
+  // Conserva las variables cargadas a mano en Cloudflare (claves de Mercado Pago y Supabase) en cada publicación
+  "keep_vars": true,
   // worker.js: API de Mercado Pago (/api/...) y visita diaria a Supabase; la web la sirve Cloudflare directamente
   "main": "worker.js",
   "assets": {
