@@ -1,0 +1,7 @@
+# Cloudflare Pages: encabezados (equivale a lo que hace netlify.toml en Netlify)
+/img/*
+  Cache-Control: public, max-age=86400
+/vendor/*
+  Cache-Control: public, max-age=604800
+/panel/*
+  X-Robots-Tag: noindex
