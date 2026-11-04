@@ -172,18 +172,27 @@
     cantidad: 1,
     side: 'frente',
     vista: 'percha',   // percha, modelo o plana
-    designs: { frente: null, espalda: null },   // { img (canvas), name, w (cm), x, y, bgRemoved }
+    designs: { frente: [], espalda: [] },   // varias estampas por lado: { id, img (canvas), name, w (cm), x, y, bgRemoved }
+    sel: { frente: null, espalda: null },   // estampa elegida en cada lado
+    reemplazar: false,                      // «Cambiar imagen» reemplaza la elegida en vez de sumar otra
     pedidoId: null,
   };
   const modeloActual = () => catalogo.find((m) => m.id === st.modelo) || catalogo[0];
   const colorActual = () => (modeloActual().colores.find((c) => c.nombre === st.color) || modeloActual().colores[0]);
+  const MAX_POR_LADO = 4;
+  const lista = (side) => st.designs[side];
+  const hayEn = (side) => st.designs[side].length > 0;
+  /* Estampa elegida del lado que se está editando */
+  const actual = (side = st.side) => lista(side).find((d) => d.id === st.sel[side]) || lista(side)[lista(side).length - 1] || null;
+  const nombreEstampa = (side, d) => (lista(side).length > 1 ? `${ZONAS[side].label} ${lista(side).indexOf(d) + 1}` : ZONAS[side].label);
 
   function totales() {
     const m = modeloActual();
-    const est = Object.entries(st.designs).filter(([, d]) => d).map(([side, d]) => {
+    const est = [];
+    ['frente', 'espalda'].forEach((side) => lista(side).forEach((d, i) => {
       const h = d.w * d.img.height / d.img.width;
-      return { side, zona: ZONAS[side].label, ancho: d.w, alto: h, precio: precioEstampa(d.w, h) };
-    });
+      est.push({ side, d, n: i + 1, zona: nombreEstampa(side, d), ancho: d.w, alto: h, precio: precioEstampa(d.w, h) });
+    }));
     const porPrenda = Number(m.precio || 0) + est.reduce((a, e) => a + e.precio, 0);
     return { est, porPrenda, total: porPrenda * st.cantidad };
   }
@@ -288,8 +297,7 @@
   const pxPerCm = (side = st.side) => geo(side).k;
   const areaCenter = (side) => geo(side);
   /* Rectángulo del diseño en píxeles del documento */
-  function designRect(side) {
-    const d = st.designs[side];
+  function designRect(side, d = actual(side)) {
     if (!d) return null;
     const c = geo(side), k = c.k;
     const w = d.w * k, h = w * d.img.height / d.img.width;
@@ -319,19 +327,19 @@
     } else {
       return;   // la foto todavía está cargando: se redibuja sola al terminar
     }
-    const d = st.designs[side];
-    if (d) {
+    if (hayEn(side)) {
       const layer = M.createCanvas(size, size);
       const lc = layer.getContext('2d');
-      const r = designRect(side);
       lc.imageSmoothingQuality = 'high';
-      lc.drawImage(d.preview || d.img, r.x * k, r.y * k, r.w * k, r.h * k);
+      lista(side).forEach((d) => { const r = designRect(side, d); lc.drawImage(d.preview || d.img, r.x * k, r.y * k, r.w * k, r.h * k); });
       if (usaFoto) {
-        // Pliegues reales de la foto, solo dentro del diseño
+        // Pliegues reales de la foto, solo dentro de las estampas (se recorta con una copia de todas juntas)
+        const forma = M.createCanvas(size, size);
+        forma.getContext('2d').drawImage(layer, 0, 0);
         lc.globalCompositeOperation = 'multiply';
         lc.drawImage(f.shade, 0, 0, size, size);
         lc.globalCompositeOperation = 'destination-in';
-        lc.drawImage(d.preview || d.img, r.x * k, r.y * k, r.w * k, r.h * k);
+        lc.drawImage(forma, 0, 0);
         c.save();
         c.globalAlpha = 0.96;
         c.drawImage(layer, 0, 0);
@@ -352,13 +360,25 @@
         c.restore();
       }
       if (opts.edit) {
-        c.save();
-        c.strokeStyle = usaFoto ? '#ffffff' : '#0d4fa3';
-        c.lineWidth = 2;
-        c.setLineDash([6, 4]);
-        c.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
-        if (usaFoto) { c.strokeStyle = '#0d4fa3'; c.lineDashOffset = 5; c.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k); }
-        c.restore();
+        // Recuadro: la estampa elegida resaltada, las otras apenas marcadas
+        const elegida = actual(side);
+        lista(side).forEach((d) => {
+          const r = designRect(side, d);
+          c.save();
+          if (d === elegida) {
+            c.strokeStyle = usaFoto ? '#ffffff' : '#0d4fa3';
+            c.lineWidth = 2;
+            c.setLineDash([6, 4]);
+            c.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
+            if (usaFoto) { c.strokeStyle = '#0d4fa3'; c.lineDashOffset = 5; c.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k); }
+          } else {
+            c.strokeStyle = usaFoto ? 'rgba(255,255,255,.45)' : 'rgba(13,79,163,.3)';
+            c.lineWidth = 1;
+            c.setLineDash([3, 4]);
+            c.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
+          }
+          c.restore();
+        });
       }
     }
     if (opts.edit) {
@@ -430,18 +450,26 @@
   const otroLado = () => (st.side === 'frente' ? 'espalda' : 'frente');
   function renderStep2() {
     const otro = otroLado();
-    $('#mini-label').textContent = st.designs[otro] ? ZONAS[otro].label : `＋ ${ZONAS[otro].label}`;
+    $('#mini-label').textContent = hayEn(otro) ? ZONAS[otro].label : `＋ ${ZONAS[otro].label}`;
     $('#mini-side').setAttribute('aria-label', `Ver y editar ${ZONAS[otro].label.toLowerCase()}`);
-    $('#add-other').hidden = !st.designs[st.side] || !!st.designs[otro];
+    $('#add-other').hidden = !hayEn(st.side) || hayEn(otro);
     $('#other-name').textContent = ZONAS[otro].label.toLowerCase();
     $$('.side-tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.side === st.side)));
-    $('#dot-frente').classList.toggle('on', !!st.designs.frente);
-    $('#dot-espalda').classList.toggle('on', !!st.designs.espalda);
+    $('#dot-frente').classList.toggle('on', hayEn('frente'));
+    $('#dot-espalda').classList.toggle('on', hayEn('espalda'));
     $('#side-name').textContent = ZONAS[st.side].label.toLowerCase();
     renderVistas();
-    const d = st.designs[st.side];
+    const d = actual();
     $('#upload-btn').hidden = !!d;
     $('#design-tools').hidden = !d;
+    // Lista de estampas de este lado + botón para sumar otra
+    const L = lista(st.side);
+    $('#stamps').hidden = !d;
+    $('#stamps').innerHTML = L.map((x, i) => `<button type="button" class="stamp-chip" data-id="${x.id}" aria-pressed="${x === d}"><img src="${x.thumb}" alt="" width="34" height="34"><span>${L.length > 1 ? `Estampa ${i + 1}` : 'Estampa'}<small>${cmTxt(x.w)} cm</small></span></button>`).join('')
+      + (L.length < MAX_POR_LADO ? `<button type="button" class="stamp-chip add" id="add-same">＋ Otra en ${ZONAS[st.side].label.toLowerCase()}</button>` : '');
+    $$('#stamps .stamp-chip[data-id]').forEach((b) => b.addEventListener('click', () => { st.sel[st.side] = b.dataset.id; renderStep2(); }));
+    const addSame = $('#add-same');
+    if (addSame) addSame.addEventListener('click', () => { st.reemplazar = false; $('#file').click(); });
     $('#drag-hint').hidden = !d;
     $('#mock-2').classList.toggle('has-design', !!d);
     if (d) {
@@ -452,13 +480,13 @@
       const h = d.w * d.img.height / d.img.width;
       $('#size-label').textContent = `${cmTxt(d.w)} × ${cmTxt(h)} cm`;
       $('#presets').innerHTML = ZONAS[st.side].presets.map(([n, w]) => `<button type="button" data-w="${w}" aria-pressed="${Math.abs(d.w - w) < 0.3}">${n} · ${w} cm</button>`).join('');
-      $$('#presets button').forEach((b) => b.addEventListener('click', () => { setWidth(Number(b.dataset.w)); if (Number(b.dataset.w) <= 10 && st.side === 'frente') { d.x = -6; d.y = -8; } else { d.x = 0; d.y = 0; } fitInside(d); renderStep2(); }));
+      $$('#presets button').forEach((b) => b.addEventListener('click', () => { setWidth(Number(b.dataset.w)); if (Number(b.dataset.w) <= 10 && st.side === 'frente') { d.x = -6; d.y = -8; } else if (L.length === 1) { d.x = 0; d.y = 0; } fitInside(d); renderStep2(); }));
       // Resolución efectiva (ppp) para el tamaño elegido
       const ppp = Math.round(d.img.width / (d.w / 2.54));
       const warn = $('#res-warn');
       warn.hidden = ppp >= 150;
       warn.textContent = `Tu imagen tiene poca resolución para ${cmTxt(d.w)} cm (${ppp} ppp): puede verse pixelada. Probá un tamaño más chico o una imagen más grande.`;
-      $('#stamp-price').innerHTML = `Esta estampa: <b>${money(precioEstampa(d.w, h))}</b>`;
+      $('#stamp-price').innerHTML = `${L.length > 1 ? `Estampa ${L.indexOf(d) + 1}` : 'Esta estampa'}: <b>${money(precioEstampa(d.w, h))}</b>`;
       $('#bg-btn').disabled = d.bgRemoved;
       $('#bg-btn').textContent = d.bgRemoved ? '✓ Fondo quitado' : '✦ Quitar fondo';
     }
@@ -466,8 +494,8 @@
   }
 
   /* Mantiene el diseño dentro de la zona de estampa */
-  function fitInside(d) {
-    const [mw, mh] = ZONAS[st.side].max;
+  function fitInside(d, side = st.side) {
+    const [mw, mh] = ZONAS[side].max;
     let h = d.w * d.img.height / d.img.width;
     if (h > mh) { d.w = mh * d.img.width / d.img.height; h = mh; }
     d.w = Math.min(d.w, mw);
@@ -475,7 +503,7 @@
     d.y = clamp(d.y, -(mh - h) / 2, (mh - h) / 2);
   }
   function setWidth(w) {
-    const d = st.designs[st.side];
+    const d = actual();
     if (!d) return;
     d.w = clamp(w, 3, ZONAS[st.side].max[0]);
     fitInside(d);
@@ -489,9 +517,19 @@
     try {
       let img = await M.blobToCanvas(file);
       img = M.fitInside(img, 4200);                 // suficiente para 35 cm a 300 ppp
-      const prev = st.designs[st.side];
-      const d = { img, preview: M.fitInside(img, 900), name: file.name, w: prev ? prev.w : ZONAS[st.side].presets[1][1], x: prev ? prev.x : 0, y: prev ? prev.y : 0, bgRemoved: false };
-      st.designs[st.side] = d;
+      const prev = st.reemplazar ? actual() : null;
+      if (!prev && lista(st.side).length >= MAX_POR_LADO) { toast(`Hasta ${MAX_POR_LADO} estampas por lado.`); return; }
+      const nueva = !prev && lista(st.side).length > 0;
+      // Una estampa nueva junto a otra arranca chica y corrida, para que no queden encimadas
+      const d = {
+        id: uid(), img, preview: M.fitInside(img, 900), thumb: miniatura(img), name: file.name, bgRemoved: false,
+        w: prev ? prev.w : (nueva ? 9 : ZONAS[st.side].presets[1][1]),
+        x: prev ? prev.x : (nueva ? 6 : 0), y: prev ? prev.y : (nueva ? -8 : 0),
+      };
+      if (prev) lista(st.side).splice(lista(st.side).indexOf(prev), 1, d);
+      else lista(st.side).push(d);
+      st.sel[st.side] = d.id;
+      st.reemplazar = false;
       fitInside(d);
       renderStep2();
       if (!hasAlpha(img)) toast('¿Tu imagen tiene fondo? Tocá «Quitar fondo» para que se estampe solo el dibujo.');
@@ -501,6 +539,14 @@
     } finally {
       setBusy(false);
     }
+  }
+  /* Miniatura para la lista de estampas */
+  function miniatura(img) {
+    const c = M.createCanvas(68, 68);
+    const x = c.getContext('2d');
+    const s = Math.min(68 / img.width, 68 / img.height);
+    x.drawImage(img, (68 - img.width * s) / 2, (68 - img.height * s) / 2, img.width * s, img.height * s);
+    return c.toDataURL('image/png');
   }
   function hasAlpha(canvas) {
     const s = M.fitInside(canvas, 200);
@@ -512,7 +558,7 @@
   /* Quitar fondo: IA en el navegador; si no está disponible, por color de las esquinas */
   let bgLib = null;
   async function quitarFondo() {
-    const d = st.designs[st.side];
+    const d = actual();
     if (!d) return;
     setBusy(true, 'Quitando el fondo…');
     try {
@@ -533,6 +579,7 @@
       }
       applyMask(d.img, mask);
       d.preview = M.fitInside(d.img, 900);
+      d.thumb = miniatura(d.img);
       d.bgRemoved = true;
       renderStep2();
       toast('Listo: fondo quitado.');
@@ -591,20 +638,22 @@
     let start = null;
     const toDoc = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * DOC, (e.clientY - r.top) / r.height * DOC]; };
     cv.addEventListener('pointerdown', (e) => {
-      const d = st.designs[st.side];
-      if (!d) return;
+      if (!hayEn(st.side)) return;
       const [px, py] = toDoc(e);
-      const r = designRect(st.side);
-      const pad = 30;
-      if (px < r.x - pad || px > r.x + r.w + pad || py < r.y - pad || py > r.y + r.h + pad) return;
-      start = { px, py, x: d.x, y: d.y };
+      const dentro = (d, pad) => { const r = designRect(st.side, d); return px >= r.x - pad && px <= r.x + r.w + pad && py >= r.y - pad && py <= r.y + r.h + pad; };
+      // Primero la que está arriba; si no, la elegida con un margen para el dedo
+      const L = lista(st.side);
+      const d = L.slice().reverse().find((x) => dentro(x, 0)) || (dentro(actual(), 30) ? actual() : null);
+      if (!d) return;
+      if (st.sel[st.side] !== d.id) { st.sel[st.side] = d.id; renderStep2(); }
+      start = { px, py, x: d.x, y: d.y, d };
       drag.on = true;
       cv.setPointerCapture(e.pointerId);
       cv.classList.add('is-dragging');
     });
     cv.addEventListener('pointermove', (e) => {
       if (!start) return;
-      const d = st.designs[st.side];
+      const d = start.d;
       const [px, py] = toDoc(e);
       const k = pxPerCm();
       d.x = start.x + (px - start.px) / k;
@@ -619,7 +668,7 @@
     cv.addEventListener('pointercancel', end);
     // Teclado: flechas mueven el diseño medio centímetro
     cv.addEventListener('keydown', (e) => {
-      const d = st.designs[st.side];
+      const d = actual();
       const mv = { ArrowLeft: [-0.5, 0], ArrowRight: [0.5, 0], ArrowUp: [0, -0.5], ArrowDown: [0, 0.5] }[e.key];
       if (!d || !mv) return;
       e.preventDefault();
@@ -633,7 +682,7 @@
      7. PASO 3 · PEDIDO Y ENVÍO
      ========================================================= */
   function mockBlobs(size = 900) {
-    const sides = ['frente', 'espalda'].filter((s) => s === 'frente' || st.designs[s]);
+    const sides = ['frente', 'espalda'].filter((s) => s === 'frente' || hayEn(s));
     return sides.map((s) => {
       const c = M.createCanvas(size, size);
       const ctx = c.getContext('2d');
@@ -717,19 +766,19 @@
       const files = [];
       // Archivos de impresión: la imagen original con su medida en el nombre
       for (const e of t.est) {
-        const d = st.designs[e.side];
-        files.push({ blob: await M.canvasToBlob(d.img, 'image/png'), name: `${e.side}-${cmTxt(e.ancho).replace(',', '.')}x${cmTxt(e.alto).replace(',', '.')}cm.png` });
+        const n = lista(e.side).length > 1 ? `-${e.n}` : '';
+        files.push({ blob: await M.canvasToBlob(e.d.img, 'image/png'), name: `${e.side}${n}-${cmTxt(e.ancho).replace(',', '.')}x${cmTxt(e.alto).replace(',', '.')}cm.png` });
       }
       await fotosListas();
       for (const { side, canvas } of mockBlobs(1000)) files.push({ blob: await M.canvasToBlob(canvas, 'image/jpeg', 0.9), name: `mockup-${side}.jpg` });
-      if (t.est.length > 1) files.push({ blob: await M.canvasToBlob(mockCompleto(800), 'image/jpeg', 0.9), name: 'mockup-frente-y-espalda.jpg' });
+      if (hayEn('espalda')) files.push({ blob: await M.canvasToBlob(mockCompleto(800), 'image/jpeg', 0.9), name: 'mockup-frente-y-espalda.jpg' });
       const pedido = {
         id, origen: 'tienda', estado: 'sena', fecha: new Date().toISOString(),
         cliente: name.slice(0, 80), telefono: tel, notas: $('#o-notes').value.trim().slice(0, 600), total: t.total,
         sena: senaMonto(t.total), sena_pagada: false,
         items: [{
           modelo_id: modeloActual().id, color: st.color, talle: st.talle, cantidad: st.cantidad,
-          estampas: t.est.map((e) => ({ zona: e.zona, ancho: Math.round(e.ancho * 10) / 10, alto: Math.round(e.alto * 10) / 10, cantidad: 1, precio: e.precio, x: Math.round(st.designs[e.side].x * 10) / 10, y: Math.round(st.designs[e.side].y * 10) / 10 })),
+          estampas: t.est.map((e) => ({ zona: e.zona, ancho: Math.round(e.ancho * 10) / 10, alto: Math.round(e.alto * 10) / 10, cantidad: 1, precio: e.precio, x: Math.round(e.d.x * 10) / 10, y: Math.round(e.d.y * 10) / 10 })),
         }],
         imagenes: [], stock_descontado: false,
       };
@@ -870,7 +919,7 @@
       if (!st.talle) { toast('Elegí tu talle para seguir.'); $('#sizes button')?.focus(); return; }
       goStep(2);
     } else if (st.step === 2) {
-      if (!st.designs.frente && !st.designs.espalda) { toast('Subí al menos una imagen para estampar.'); return; }
+      if (!hayEn('frente') && !hayEn('espalda')) { toast('Subí al menos una imagen para estampar.'); return; }
       goStep(3);
     } else if (st.step === 3) {
       enviarPedido();
@@ -908,15 +957,15 @@
     $('#qty').addEventListener('change', (e) => { st.cantidad = clamp(Math.round(Number(e.target.value) || 1), 1, 200); e.target.value = st.cantidad; updatePrice(); });
 
     $$('.side-tabs button').forEach((b) => b.addEventListener('click', () => { st.side = b.dataset.side; renderStep2(); }));
-    $('#upload-btn').addEventListener('click', () => $('#file').click());
-    $('#change-btn').addEventListener('click', () => $('#file').click());
+    $('#upload-btn').addEventListener('click', () => { st.reemplazar = false; $('#file').click(); });
+    $('#change-btn').addEventListener('click', () => { st.reemplazar = true; $('#file').click(); });
     $('#file').addEventListener('change', (e) => { loadFile(e.target.files[0]); e.target.value = ''; });
-    $('#remove-btn').addEventListener('click', () => { st.designs[st.side] = null; renderStep2(); });
-    $('#center-btn').addEventListener('click', () => { const d = st.designs[st.side]; if (d) { d.x = 0; d.y = 0; fitInside(d); renderStep2(); } });
+    $('#remove-btn').addEventListener('click', () => { const d = actual(); if (d) { lista(st.side).splice(lista(st.side).indexOf(d), 1); st.sel[st.side] = null; } renderStep2(); });
+    $('#center-btn').addEventListener('click', () => { const d = actual(); if (d) { d.x = 0; fitInside(d); renderStep2(); } });
     $('#bg-btn').addEventListener('click', quitarFondo);
     const irAlOtroLado = () => { st.side = otroLado(); renderStep2(); $('#mock-2').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
     $('#mini-side').addEventListener('click', irAlOtroLado);
-    $('#add-other').addEventListener('click', () => { irAlOtroLado(); $('#file').click(); });
+    $('#add-other').addEventListener('click', () => { irAlOtroLado(); st.reemplazar = false; $('#file').click(); });
     $('#size').addEventListener('input', (e) => { setWidth(Number(e.target.value)); renderStep2(); });
     initDrag();
 
@@ -931,7 +980,7 @@
     $('#ok-copy').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(aliasPago()); toast('Alias copiado: ' + aliasPago()); } catch (e) { toast('Alias: ' + aliasPago()); }
     });
-    $('#ok-new').addEventListener('click', () => { st.designs = { frente: null, espalda: null }; st.side = 'frente'; goStep(1); });
+    $('#ok-new').addEventListener('click', () => { st.designs = { frente: [], espalda: [] }; st.sel = { frente: null, espalda: null }; st.side = 'frente'; goStep(1); });
     $('#ok-dl').addEventListener('click', async () => {
       await fotosListas();
       const blob = await M.canvasToBlob(mockCompleto(1100), 'image/jpeg', 0.92);

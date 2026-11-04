@@ -49,8 +49,21 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 .mock-box .busy { position: absolute; inset: 44px 0 0; border-radius: 18px; }
 .hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 
+/* Lista de estampas del lado elegido */
+.stamps { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.stamp-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 5px 12px 5px 5px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--white); color: var(--ink); font-size: 14px; font-weight: 700; text-align: left; cursor: pointer;
+}
+.stamp-chip img { width: 34px; height: 34px; border-radius: 8px; background: repeating-conic-gradient(#e6e8ee 0 25%, #fff 0 50%) 0 0 / 10px 10px; object-fit: contain; }
+.stamp-chip span { display: grid; line-height: 1.15; }
+.stamp-chip small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.stamp-chip[aria-pressed="true"] { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); background: var(--brand-soft); }
+.stamp-chip.add { padding: 5px 14px; border-style: dashed; border-color: var(--brand-light); color: var(--navy); }
+.stamp-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
 /* Lienzo con la miniatura del otro lado */
-.canvas-wrap { position: relative; }
+.canvas-wrap { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .mini-side {
   position: absolute; right: 10px; bottom: 10px; display: grid; width: 26%; min-width: 86px; max-width: 140px; padding: 0;
   overflow: hidden; border: 2px solid var(--white); border-radius: 12px; background: #e4e4e7; box-shadow: 0 6px 18px #1b2a6e40; cursor: pointer;

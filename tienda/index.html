@@ -115,7 +115,7 @@
           </div>
           <div class="view-tabs" role="group" aria-label="Cómo ver la remera"></div>
           <div class="busy" id="busy" hidden><span class="spinner" aria-hidden="true"></span><b id="busy-text">Procesando…</b></div>
-          <p class="hint" id="drag-hint" hidden>Arrastrá el diseño para ubicarlo.</p>
+          <p class="hint" id="drag-hint" hidden>Arrastrá cada estampa para ubicarla. Tocá una para elegirla.</p>
         </div>
         <div class="shop-opts">
           <p class="eyebrow">Paso 2 de 3</p>
@@ -126,6 +126,8 @@
             <span aria-hidden="true">＋</span><strong>Subir imagen</strong><small>PNG, JPG o WEBP · ideal con fondo transparente</small>
           </button>
           <div id="design-tools" hidden>
+            <!-- Estampas de este lado: tocá una para editarla o sumá otra -->
+            <div class="stamps" id="stamps" role="group" aria-label="Estampas de este lado"></div>
             <div class="tool-row">
               <button type="button" class="panel-btn" id="bg-btn">✦ Quitar fondo</button>
               <button type="button" class="panel-btn" id="center-btn">⊕ Centrar</button>
