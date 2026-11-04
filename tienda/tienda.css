@@ -49,6 +49,22 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 .mock-box .busy { position: absolute; inset: 44px 0 0; border-radius: 18px; }
 .hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 
+/* Lienzo con la miniatura del otro lado */
+.canvas-wrap { position: relative; }
+.mini-side {
+  position: absolute; right: 10px; bottom: 10px; display: grid; width: 26%; min-width: 86px; max-width: 140px; padding: 0;
+  overflow: hidden; border: 2px solid var(--white); border-radius: 12px; background: #e4e4e7; box-shadow: 0 6px 18px #1b2a6e40; cursor: pointer;
+}
+.mini-side canvas { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.mini-side span { padding: 3px 4px; background: var(--white); color: var(--navy); font-size: 11px; font-weight: 800; text-align: center; }
+.mini-side:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.upload-other {
+  width: 100%; margin-top: 10px; padding: 12px; border: 2px dashed var(--brand-light); border-radius: 12px;
+  background: var(--brand-soft); color: var(--navy); font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.upload-other:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.summary-mocks .wide { grid-column: 1 / -1; }
+
 /* Vista: en percha / puesta / plana */
 .view-tabs { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
 .view-tabs button {

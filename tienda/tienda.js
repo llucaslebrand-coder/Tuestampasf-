@@ -392,7 +392,10 @@
     cancelAnimationFrame(drawTimer);
     drawTimer = requestAnimationFrame(() => {
       if (st.step === 1) { const c = $('#mock-1'); canvasSize(c); drawMock(c, 'frente'); }
-      if (st.step === 2) { const c = $('#mock-2'); canvasSize(c); drawMock(c, st.side, { edit: true, guideX: drag.guideX }); }
+      if (st.step === 2) {
+        const c = $('#mock-2'); canvasSize(c); drawMock(c, st.side, { edit: true, guideX: drag.guideX });
+        drawMock($('#mock-mini'), otroLado());   // el otro lado, en chiquito
+      }
       updatePrice();
     });
   }
@@ -424,7 +427,13 @@
      ========================================================= */
   const drag = { on: false, guideX: false };
 
+  const otroLado = () => (st.side === 'frente' ? 'espalda' : 'frente');
   function renderStep2() {
+    const otro = otroLado();
+    $('#mini-label').textContent = st.designs[otro] ? ZONAS[otro].label : `＋ ${ZONAS[otro].label}`;
+    $('#mini-side').setAttribute('aria-label', `Ver y editar ${ZONAS[otro].label.toLowerCase()}`);
+    $('#add-other').hidden = !st.designs[st.side] || !!st.designs[otro];
+    $('#other-name').textContent = ZONAS[otro].label.toLowerCase();
     $$('.side-tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.side === st.side)));
     $('#dot-frente').classList.toggle('on', !!st.designs.frente);
     $('#dot-espalda').classList.toggle('on', !!st.designs.espalda);
@@ -637,6 +646,25 @@
     });
   }
 
+  /* Frente y espalda juntos en una sola imagen (si hay estampa atrás) */
+  function mockCompleto(h = 900) {
+    const partes = mockBlobs(h);
+    if (partes.length === 1) return partes[0].canvas;
+    const pad = Math.round(h * 0.03), label = Math.round(h * 0.07);
+    const c = M.createCanvas(h * 2 + pad, h + label);
+    const x = c.getContext('2d');
+    x.fillStyle = '#ffffff';
+    x.fillRect(0, 0, c.width, c.height);
+    partes.forEach(({ side, canvas }, i) => {
+      x.drawImage(canvas, i * (h + pad), 0);
+      x.fillStyle = '#1b2a6e';
+      x.font = `700 ${Math.round(label * 0.45)}px Inter, Arial, sans-serif`;
+      x.textAlign = 'center';
+      x.fillText(ZONAS[side].label, i * (h + pad) + h / 2, h + label * 0.68);
+    });
+    return c;
+  }
+
   function renderStep3() {
     const m = modeloActual();
     const t = totales();
@@ -694,6 +722,7 @@
       }
       await fotosListas();
       for (const { side, canvas } of mockBlobs(1000)) files.push({ blob: await M.canvasToBlob(canvas, 'image/jpeg', 0.9), name: `mockup-${side}.jpg` });
+      if (t.est.length > 1) files.push({ blob: await M.canvasToBlob(mockCompleto(800), 'image/jpeg', 0.9), name: 'mockup-frente-y-espalda.jpg' });
       const pedido = {
         id, origen: 'tienda', estado: 'sena', fecha: new Date().toISOString(),
         cliente: name.slice(0, 80), telefono: tel, notas: $('#o-notes').value.trim().slice(0, 600), total: t.total,
@@ -789,7 +818,13 @@
     }
     const box = $('#ok-mocks');
     box.innerHTML = '';
-    mockBlobs(500).forEach(({ canvas }) => { const f = document.createElement('figure'); f.appendChild(canvas); box.appendChild(f); });
+    const f = document.createElement('figure');
+    f.className = 'wide';
+    const img = mockCompleto(500);
+    img.setAttribute('role', 'img');
+    img.setAttribute('aria-label', 'Tu remera terminada');
+    f.appendChild(img);
+    box.appendChild(f);
     const wa = whatsappNegocio();
     const link = $('#ok-wa');
     link.hidden = !wa;
@@ -879,6 +914,9 @@
     $('#remove-btn').addEventListener('click', () => { st.designs[st.side] = null; renderStep2(); });
     $('#center-btn').addEventListener('click', () => { const d = st.designs[st.side]; if (d) { d.x = 0; d.y = 0; fitInside(d); renderStep2(); } });
     $('#bg-btn').addEventListener('click', quitarFondo);
+    const irAlOtroLado = () => { st.side = otroLado(); renderStep2(); $('#mock-2').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+    $('#mini-side').addEventListener('click', irAlOtroLado);
+    $('#add-other').addEventListener('click', () => { irAlOtroLado(); $('#file').click(); });
     $('#size').addEventListener('input', (e) => { setWidth(Number(e.target.value)); renderStep2(); });
     initDrag();
 
@@ -896,14 +934,11 @@
     $('#ok-new').addEventListener('click', () => { st.designs = { frente: null, espalda: null }; st.side = 'frente'; goStep(1); });
     $('#ok-dl').addEventListener('click', async () => {
       await fotosListas();
-      for (const { side, canvas } of mockBlobs(1200)) {
-        const blob = await M.canvasToBlob(canvas, 'image/jpeg', 0.92);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `mi-remera-${side}.jpg`;
-        a.click();
-        await nextFrame();
-      }
+      const blob = await M.canvasToBlob(mockCompleto(1100), 'image/jpeg', 0.92);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'mi-remera-tu-estampa-sf.jpg';
+      a.click();
     });
     // Pegar una imagen con Ctrl + V en el paso 2
     document.addEventListener('paste', (e) => {

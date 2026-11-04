@@ -105,7 +105,14 @@
             <button type="button" data-side="frente" aria-pressed="true">Frente <i id="dot-frente"></i></button>
             <button type="button" data-side="espalda" aria-pressed="false">Espalda <i id="dot-espalda"></i></button>
           </div>
-          <canvas id="mock-2" class="mock-canvas is-edit" width="600" height="600" tabindex="0" role="img" aria-label="Tu diseño sobre la remera. Arrastralo para moverlo."></canvas>
+          <div class="canvas-wrap">
+            <canvas id="mock-2" class="mock-canvas is-edit" width="600" height="600" tabindex="0" role="img" aria-label="Tu diseño sobre la remera. Arrastralo para moverlo."></canvas>
+            <!-- Miniatura del otro lado de la remera: tocála para editarlo -->
+            <button type="button" class="mini-side" id="mini-side" aria-label="Ver y editar la espalda">
+              <canvas id="mock-mini" width="300" height="300" aria-hidden="true"></canvas>
+              <span id="mini-label">Espalda</span>
+            </button>
+          </div>
           <div class="view-tabs" role="group" aria-label="Cómo ver la remera"></div>
           <div class="busy" id="busy" hidden><span class="spinner" aria-hidden="true"></span><b id="busy-text">Procesando…</b></div>
           <p class="hint" id="drag-hint" hidden>Arrastrá el diseño para ubicarlo.</p>
@@ -125,6 +132,7 @@
               <button type="button" class="panel-btn" id="change-btn">⤒ Cambiar</button>
               <button type="button" class="panel-btn danger-btn" id="remove-btn">✕ Quitar</button>
             </div>
+            <button type="button" class="upload-other" id="add-other">＋ Agregar otra estampa en la <b id="other-name">espalda</b></button>
             <h2 class="opt-title">Tamaño de la estampa</h2>
             <div class="chip-row" id="presets"></div>
             <label class="field"><span class="field-label">Ancho <b id="size-label"></b></span>
