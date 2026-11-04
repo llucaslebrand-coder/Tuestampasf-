@@ -449,7 +449,7 @@
       $('#ok-mp').onclick = async () => {
         $('#ok-mp').disabled = true;
         $('#ok-mp').textContent = 'Abriendo Mercado Pago…';
-        try { await TEPago.iniciar(p.id); } catch (e) { toast('No se pudo abrir Mercado Pago. Probá de nuevo o pagá por transferencia.'); $('#ok-mp').disabled = false; $('#ok-mp').textContent = 'Pagar con Mercado Pago'; }
+        try { await TEPago.iniciar(p.id); } catch (e) { toast(`No se pudo abrir Mercado Pago (${e.message}). Probá de nuevo o pagá por transferencia.`); $('#ok-mp').disabled = false; $('#ok-mp').textContent = 'Pagar con Mercado Pago'; }
       };
     }
     $('#ok-img').src = vista.toDataURL('image/jpeg', 0.8);

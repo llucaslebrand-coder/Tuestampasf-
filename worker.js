@@ -29,7 +29,10 @@ function sbHeaders(env) {
 }
 async function leerPedido(env, id) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${encodeURIComponent(id)}&select=id,numero,origen,estado,total,sena,sena_pagada,cliente,pago`, { headers: sbHeaders(env) });
-  if (!res.ok) throw new Error(`Supabase ${res.status}`);
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Supabase ${res.status} ${t.slice(0, 120)}`);
+  }
   const rows = await res.json();
   return rows[0] || null;
 }
@@ -85,7 +88,7 @@ async function crearPago(request, env) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.init_point) {
     console.log('Mercado Pago rechazó la preferencia', res.status, JSON.stringify(data).slice(0, 500));
-    return json({ error: 'Mercado Pago no respondió' }, 502);
+    return json({ error: `Mercado Pago rechazó el pago: ${(data.message || data.error || res.status)}`.slice(0, 160) }, 502);
   }
   return json({ url: data.init_point });
 }
@@ -144,7 +147,7 @@ export default {
       if (pathname.startsWith('/api/')) return json({ error: 'No encontrado' }, 404);
     } catch (e) {
       console.log('Error en la API', pathname, e && e.message);
-      return json({ error: 'Error del servidor' }, 500);
+      return json({ error: `Error del servidor: ${(e && e.message) || ''}`.slice(0, 200) }, 500);
     }
     // Todo lo demás: la web de siempre (o la página 404)
     return env.ASSETS.fetch(request);

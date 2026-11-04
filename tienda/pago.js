@@ -22,7 +22,8 @@
       body: JSON.stringify({ pedido: pedidoId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago');
+    // El motivo (con el código) ayuda a saber qué revisar si algo falla
+    if (!res.ok || !data.url) throw new Error(`${data.error || 'sin respuesta'} · ${res.status}`);
     location.href = data.url;
   }
 
