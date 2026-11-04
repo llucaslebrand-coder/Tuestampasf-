@@ -554,7 +554,7 @@
     });
   }
 
-  async function descontarStockPedido(p) {
+  async function descontarStockPedido(p, silencioso = false) {
     const faltan = [];
     for (const it of p.items || []) {
       const v = Store.data.variantes.find((x) => x.modelo_id === it.modelo_id && x.color === it.color && x.talle === it.talle);
@@ -562,7 +562,8 @@
       await changeStock(v, -(Number(it.cantidad) || 1), 'pedido', `Pedido #${p.numero || ''} · ${p.cliente}`);
     }
     await Store.save('pedidos', { ...p, stock_descontado: true });
-    toast(faltan.length ? `Stock descontado. No encontré: ${faltan.join(', ')}.` : 'Stock descontado.');
+    if (faltan.length) toast(`Stock descontado. No encontré en el stock: ${faltan.join(', ')}.`, true);
+    else if (!silencioso) toast('Stock descontado.');
   }
 
   function waLink(tel, text) {
@@ -570,6 +571,23 @@
     if (!n) return null;
     if (!n.startsWith('54')) n = '549' + n.replace(/^0/, '').replace(/^15/, '');
     return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
+  }
+
+  /* Recorrido de un pedido: un botón para pasar al paso siguiente */
+  const FLUJO = [['sena', 'Seña'], ['produccion', 'Producción'], ['listo', 'Listo'], ['entregado', 'Entregado']];
+  function siguientePaso(p) {
+    if (p.estado === 'sena') return { estado: 'produccion', label: '✓ Seña recibida: pasar a producción', sena: true };
+    if (p.estado === 'nuevo' || p.estado === 'confirmado') return { estado: 'produccion', label: '▶ Pasar a producción' };
+    if (p.estado === 'produccion') return { estado: 'listo', label: '✓ Terminado: listo para entregar' };
+    if (p.estado === 'listo') return { estado: 'entregado', label: '✓ Entregado' };
+    return null;
+  }
+  async function cambiarEstado(id, nuevo, extra = {}) {
+    await Store.save('pedidos', { ...Store.data.pedidos.find((x) => x.id === id), ...extra, estado: nuevo });
+    const cur = Store.data.pedidos.find((x) => x.id === id);
+    // Al entrar en producción se descuentan solas las remeras lisas del stock
+    if (['produccion', 'listo', 'entregado'].includes(nuevo) && !cur.stock_descontado) await descontarStockPedido(cur, true);
+    toast(`Pedido #${cur.numero || ''}: ${estadoLabel(nuevo)}${nuevo === 'produccion' ? ' · stock descontado' : ''}.`);
   }
 
   async function pedidoDetalle(id) {
@@ -580,33 +598,31 @@
       <ul class="order-items">${itemsResumen(p).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
       <p><b>Total: ${money(p.total)}</b>${p.telefono ? ` · WhatsApp: ${esc(p.telefono)}` : ''}</p>
       ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
-      ${p.estado === 'sena' ? '<button type="button" class="download" id="pd-sena">✓ Seña recibida: confirmar pedido</button>' : ''}
+      ${p.estado !== 'cancelado' ? `<ol class="flujo" aria-label="Recorrido del pedido">${FLUJO.map(([k, l], i) => {
+        const pos = p.estado === 'nuevo' || p.estado === 'confirmado' ? 0.5 : FLUJO.findIndex(([kk]) => kk === p.estado);
+        return `<li class="${i < pos ? 'is-done' : ''} ${i === pos ? 'is-now' : ''}">${l}</li>`;
+      }).join('')}</ol>` : ''}
+      ${siguientePaso(p) ? `<button type="button" class="download" id="pd-next">${siguientePaso(p).label}</button>` : ''}
       ${p.notas ? `<p class="panel-note">${esc(p.notas)}</p>` : ''}
       <div class="field"><span class="field-label">Imágenes</span><div class="thumbs" id="pd-imgs">${(p.imagenes || []).length ? 'Cargando…' : '<span class="field-help">Sin imágenes.</span>'}</div></div>
-      <label class="field"><span class="field-label">Estado</span><select id="pd-estado">${ESTADOS.map(([k, l]) => `<option value="${k}" ${k === p.estado ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <p class="field-help">${p.stock_descontado ? '✓ El stock de este pedido ya se descontó.' : 'El stock todavía no se descontó.'}</p>
+      <label class="field"><span class="field-label">Cambiar estado a mano</span><select id="pd-estado">${ESTADOS.map(([k, l]) => `<option value="${k}" ${k === p.estado ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <p class="field-help">${p.stock_descontado ? '✓ El stock de este pedido ya se descontó.' : 'El stock se descuenta solo cuando el pedido pasa a producción.'}</p>
       <div class="row-actions">
         <button type="button" class="panel-btn danger-btn" id="pd-del">Eliminar</button>
         ${p.telefono ? '<button type="button" class="panel-btn" id="pd-wa">WhatsApp</button>' : ''}
-        ${!p.stock_descontado ? '<button type="button" class="panel-btn" id="pd-stock">Descontar stock</button>' : ''}
+        ${!p.stock_descontado && ['produccion', 'listo', 'entregado'].includes(p.estado) ? '<button type="button" class="panel-btn" id="pd-stock">Descontar stock</button>' : ''}
         <button type="button" class="download" data-close>Listo</button>
       </div>`, async (body) => {
       $('#pd-estado', body).addEventListener('change', async (e) => {
-        const nuevo = e.target.value;
-        await Store.save('pedidos', { ...Store.data.pedidos.find((x) => x.id === id), estado: nuevo });
-        // Al pasar a producción se ofrece descontar las remeras lisas
-        const cur = Store.data.pedidos.find((x) => x.id === id);
-        if (['produccion', 'listo', 'entregado'].includes(nuevo) && !cur.stock_descontado) {
-          await descontarStockPedido(cur);
-        }
-        toast(`Estado: ${estadoLabel(nuevo)}`);
+        await cambiarEstado(id, e.target.value);
         refresh();
         pedidoDetalle(id);
       });
-      const sb = $('#pd-sena', body);
-      if (sb) sb.addEventListener('click', async () => {
-        await Store.save('pedidos', { ...Store.data.pedidos.find((x) => x.id === id), estado: 'confirmado', sena_pagada: true });
-        toast('Seña recibida. El pedido pasó a Confirmado.');
+      const nx = $('#pd-next', body);
+      if (nx) nx.addEventListener('click', async () => {
+        const paso = siguientePaso(Store.data.pedidos.find((x) => x.id === id));
+        nx.disabled = true;
+        await cambiarEstado(id, paso.estado, paso.sena ? { sena_pagada: true } : {});
         refresh();
         pedidoDetalle(id);
       });
@@ -615,7 +631,11 @@
         const t = Store.data.config.tienda || {};
         const texto = p.estado === 'sena'
           ? `Hola ${p.cliente}! Te escribo de Tu Estampa SF por tu pedido de ${money(p.total)}. Para confirmarlo falta la seña de ${money(p.sena)}${t.alias ? ` al alias ${t.alias}` : ''}. Cuando la transfieras, mandame el comprobante por acá. ¡Gracias!`
-          : `Hola ${p.cliente}! Te escribo de Tu Estampa SF por tu pedido #${p.numero || ''}: ${estadoLabel(p.estado).toLowerCase()}.`;
+          : p.estado === 'listo'
+            ? `Hola ${p.cliente}! Tu pedido #${p.numero || ''} de Tu Estampa SF ya está listo para retirar 🎉${p.sena && p.sena_pagada ? ` Te queda por pagar ${money(p.total - p.sena)}.` : ''}`
+            : p.estado === 'produccion'
+              ? `Hola ${p.cliente}! Recibimos tu seña y tu pedido #${p.numero || ''} ya está en producción. Te avisamos cuando esté listo (3 a 5 días).`
+              : `Hola ${p.cliente}! Te escribo de Tu Estampa SF por tu pedido #${p.numero || ''}: ${estadoLabel(p.estado).toLowerCase()}.`;
         const link = waLink(p.telefono, texto);
         if (link) window.open(link, '_blank', 'noopener');
       });

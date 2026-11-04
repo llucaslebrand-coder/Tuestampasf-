@@ -99,6 +99,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 /* ---------- Estados de pedido ---------- */
 .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .st-nuevo { background: #eaf1fb; color: #0d4fa3; }
+.flujo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0; padding: 0; list-style: none; counter-reset: f; }
+.flujo li { counter-increment: f; padding: 8px 4px; border-radius: 8px; background: #eef0f4; color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; }
+.flujo li::before { content: counter(f) ". "; }
+.flujo li.is-done { background: #e3f7ea; color: #1e5f33; }
+.flujo li.is-done::before { content: "✓ "; }
+.flujo li.is-now { background: var(--brand); color: #fff; }
 .st-sena { background: #fff4d6; color: #8a5a00; }
 .sena-line { padding: 8px 10px; border-radius: 10px; background: #fff4d6; color: #6b4600; }
 .sena-line.is-ok { background: #e3f7ea; color: #1e5f33; }
