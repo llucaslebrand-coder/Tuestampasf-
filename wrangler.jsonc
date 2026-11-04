@@ -1,0 +1,9 @@
+// Cloudflare: la web es estática (HTML, CSS, JS e imágenes), no hay que compilar nada.
+{
+  "name": "tuestampasf",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "404-page"
+  }
+}
