@@ -5,8 +5,13 @@
   // Dirección pública: tuestampasf.llucaslebrand.workers.dev (sin enlaces de vista previa)
   "workers_dev": true,
   "preview_urls": false,
+  // Solo para la visita diaria a Supabase; la web la sirve Cloudflare directamente
+  "main": "worker.js",
   "assets": {
     "directory": ".",
+    "binding": "ASSETS",
     "not_found_handling": "404-page"
-  }
+  },
+  // Todos los días a las 9:17 (hora de Argentina = 12:17 UTC)
+  "triggers": { "crons": ["17 12 * * *"] }
 }

@@ -6,3 +6,4 @@ netlify.toml
 LEEME.txt
 supabase
 node_modules
+worker.js
