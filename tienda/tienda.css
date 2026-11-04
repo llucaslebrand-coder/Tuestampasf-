@@ -120,7 +120,7 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 .qty :focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 
 /* ---------- Diseño ---------- */
-.side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; padding: 4px; border-radius: 12px; background: #eceef2; }
+.side-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; padding: 4px; border-radius: 12px; background: #eceef2; }
 .side-tabs button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
 .side-tabs button[aria-pressed="true"] { background: var(--white); color: var(--navy); box-shadow: 0 2px 6px #0001; }
 .side-tabs i { width: 8px; height: 8px; border-radius: 50%; background: transparent; }

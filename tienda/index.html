@@ -104,6 +104,7 @@
           <div class="side-tabs" role="group" aria-label="Lado de la remera">
             <button type="button" data-side="frente" aria-pressed="true">Frente <i id="dot-frente"></i></button>
             <button type="button" data-side="espalda" aria-pressed="false">Espalda <i id="dot-espalda"></i></button>
+            <button type="button" data-side="manga" aria-pressed="false" id="tab-manga">Manga <i id="dot-manga"></i></button>
           </div>
           <div class="canvas-wrap">
             <canvas id="mock-2" class="mock-canvas is-edit" width="600" height="600" tabindex="0" role="img" aria-label="Tu diseño sobre la remera. Arrastralo para moverlo."></canvas>
@@ -120,7 +121,7 @@
         <div class="shop-opts">
           <p class="eyebrow">Paso 2 de 3</p>
           <h1 id="s2-title">Diseñala a tu gusto</h1>
-          <p class="lead">Subí tu imagen para el <b id="side-name">frente</b>. Si querés, también para la espalda.</p>
+          <p class="lead">Subí tu imagen para <b id="side-name">el frente</b>. Si querés, sumá más estampas en la espalda o la manga.</p>
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp" class="sr-only" aria-label="Subir imagen">
           <button type="button" class="upload-big" id="upload-btn">
             <span aria-hidden="true">＋</span><strong>Subir imagen</strong><small>PNG, JPG o WEBP · ideal con fondo transparente</small>
@@ -134,7 +135,7 @@
               <button type="button" class="panel-btn" id="change-btn">⤒ Cambiar</button>
               <button type="button" class="panel-btn danger-btn" id="remove-btn">✕ Quitar</button>
             </div>
-            <button type="button" class="upload-other" id="add-other">＋ Agregar otra estampa en la <b id="other-name">espalda</b></button>
+            <button type="button" class="upload-other" id="add-other">＋ Agregar otra estampa en <b id="other-name">la espalda</b></button>
             <h2 class="opt-title">Tamaño de la estampa</h2>
             <div class="chip-row" id="presets"></div>
             <label class="field"><span class="field-label">Ancho <b id="size-label"></b></span>
