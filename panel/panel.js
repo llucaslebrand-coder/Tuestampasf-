@@ -773,7 +773,7 @@
       <p><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span> · ${fmtDateTime(p.fecha)} · ${p.origen === 'tienda' ? 'Tienda online' : 'Cargado en el panel'}</p>
       <ul class="order-items">${itemsResumen(p).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
       <p><b>Total: ${money(p.total)}</b>${p.telefono ? ` · WhatsApp: ${esc(p.telefono)}` : ''}</p>
-      ${p.pago && p.pago.proveedor === 'mercadopago' ? `<p class="sena-line is-ok">✓ Pagado con <b>Mercado Pago</b>: ${money(p.pago.monto)}${p.pago.metodo ? ` (${esc(p.pago.metodo)})` : ''} el ${fmtDateTime(p.pago.fecha)} · operación ${esc(p.pago.id)}</p>` : ''}
+      ${p.pago && p.pago.proveedor === 'mercadopago' ? `<p class="sena-line is-ok">✓ Pagado con <b>Mercado Pago</b>: ${money(p.pago.monto)}${p.pago.recargo ? ` (incluye ${money(p.pago.recargo)} de costo de Mercado Pago)` : ''}${p.pago.metodo ? ` · ${esc(p.pago.metodo)}` : ''} el ${fmtDateTime(p.pago.fecha)} · operación ${esc(p.pago.id)}</p>` : ''}
       ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
       ${p.estado !== 'cancelado' ? `<ol class="flujo" aria-label="Recorrido del pedido">${FLUJO.map(([k, l], i) => {
         const pos = p.estado === 'nuevo' || p.estado === 'confirmado' ? 0.5 : FLUJO.findIndex(([kk]) => kk === p.estado);
@@ -1718,6 +1718,8 @@
             <label class="field"><span class="field-label">Seña ($)</span><input type="number" id="aj-sena" min="0" step="500" value="${esc(tienda.sena ?? 10000)}"></label>
           </div>
           <label class="check" style="margin-top:8px"><input type="checkbox" id="aj-mp" ${tienda.mp ? 'checked' : ''}> Cobrar también con <b>Mercado Pago</b></label>
+          <label class="field" style="margin-top:6px"><span class="field-label">Costo de Mercado Pago que paga el cliente (%)</span><input type="number" id="aj-mp-rec" min="0" max="30" step="0.01" value="${esc(tienda.mpRecargo ?? 7.61)}"></label>
+          <p class="field-help" id="aj-mp-ej"></p>
           <details style="margin:6px 0 10px"><summary><b>Cómo activar Mercado Pago</b></summary>
             <ol class="order-items">
               <li>En <b>mercadopago.com.ar/developers</b> → <b>Tus integraciones</b> → <b>Crear aplicación</b> (tipo «Pagos online», producto «Checkout Pro»).</li>
@@ -1736,9 +1738,21 @@
         </section>
       </div>`;
     $('#aj-wa-save', el).addEventListener('click', async () => {
-      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0), mp: $('#aj-mp', el).checked });
+      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0), mp: $('#aj-mp', el).checked, mpRecargo: Math.min(30, Math.max(0, Number($('#aj-mp-rec', el).value) || 0)) });
       toast('Datos de la tienda guardados.');
     });
+    // Ejemplo en vivo del recargo de Mercado Pago
+    const ejMP = () => {
+      const pct = Math.min(30, Math.max(0, Number($('#aj-mp-rec', el).value) || 0));
+      const base = Number($('#aj-sena', el).value) || 10000;
+      const con = pct > 0 ? Math.ceil(base / (1 - pct / 100) / 10) * 10 : base;
+      $('#aj-mp-ej', el).innerHTML = pct > 0
+        ? `Con seña de ${money(base)}, por Mercado Pago el cliente paga <b>${money(con)}</b> y a vos te quedan unos ${money(con * (1 - pct / 100))}. Por transferencia paga ${money(base)}. Ejemplo: 6,29 % (al instante) + IVA = 7,61 %; a 35 días: 1,49 % + IVA = 1,8 %.`
+        : 'Sin recargo: la comisión de Mercado Pago la pagás vos.';
+    };
+    $('#aj-mp-rec', el).addEventListener('input', ejMP);
+    $('#aj-sena', el).addEventListener('input', ejMP);
+    ejMP();
     $('#aj-shop-copy', el).addEventListener('click', async () => {
       const url = new URL('../index.html', location.href).href;
       try { await navigator.clipboard.writeText(url); toast('Enlace copiado: ' + url); } catch (e) { toast(url); }

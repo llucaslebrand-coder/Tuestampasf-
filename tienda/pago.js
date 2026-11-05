@@ -27,5 +27,12 @@
     location.href = data.url;
   }
 
-  window.TEPago = { disponible, iniciar };
+  /* Monto a pagar con Mercado Pago (incluye el recargo configurado en el panel).
+     Es solo para mostrarlo: el monto real lo calcula el servidor con la misma cuenta. */
+  function montoConRecargo(base, negocio) {
+    const pct = Math.min(Math.max(Number(negocio && negocio.mpRecargo) || 0, 0), 30);
+    return pct > 0 ? Math.ceil(base / (1 - pct / 100) / 10) * 10 : base;
+  }
+
+  window.TEPago = { disponible, iniciar, montoConRecargo };
 })();

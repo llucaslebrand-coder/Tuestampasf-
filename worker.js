@@ -48,6 +48,17 @@ async function marcarPagado(env, id, pago, cubreTodo) {
 }
 /* Monto a cobrar: la seña si hay, si no el total (siempre calculado acá, nunca desde el navegador) */
 const montoDe = (p) => Math.round(Number(p.sena) > 0 ? Number(p.sena) : Number(p.total));
+/* Recargo por pagar con Mercado Pago (%), configurable en Panel → Ajustes → Tienda */
+async function recargoMP(env) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/config?clave=eq.tienda&select=valor`, { headers: sbHeaders(env) });
+    const rows = res.ok ? await res.json() : [];
+    const v = Number(rows[0] && rows[0].valor && rows[0].valor.mpRecargo);
+    return Number.isFinite(v) ? Math.min(Math.max(v, 0), 30) : 0;
+  } catch (e) { return 0; }
+}
+/* Monto con recargo: calculado para que, después de la comisión, quede el monto completo (redondeado a $10) */
+const conRecargo = (base, pct) => (pct > 0 ? Math.ceil(base / (1 - pct / 100) / 10) * 10 : base);
 
 /* ---------- Crear el link de pago ---------- */
 async function crearPago(request, env) {
@@ -58,14 +69,15 @@ async function crearPago(request, env) {
   if (!p || p.origen !== 'tienda') return json({ error: 'No encontramos el pedido' }, 404);
   if (p.sena_pagada) return json({ error: 'Este pedido ya está pagado' }, 409);
   if (p.estado === 'cancelado') return json({ error: 'El pedido está cancelado' }, 409);
-  const monto = montoDe(p);
-  if (!(monto > 0)) return json({ error: 'Monto inválido' }, 400);
+  const base = montoDe(p);
+  if (!(base > 0)) return json({ error: 'Monto inválido' }, 400);
+  const monto = conRecargo(base, await recargoMP(env));
   const origin = new URL(request.url).origin;
   const codigo = p.id.slice(-6).toUpperCase();
   const pref = {
     items: [{
       id: p.id,
-      title: `${Number(p.sena) > 0 ? 'Seña' : 'Pago'} pedido ${codigo} · Tu Estampa SF`,
+      title: `${Number(p.sena) > 0 ? 'Seña' : 'Pago'} pedido ${codigo} · Tu Estampa SF${monto > base ? ' (incluye costo de Mercado Pago)' : ''}`,
       quantity: 1,
       unit_price: monto,
       currency_id: 'ARS',
@@ -119,6 +131,7 @@ async function webhook(request, env) {
   await marcarPagado(env, id, {
     proveedor: 'mercadopago', id: pago.id, estado: pago.status, monto,
     metodo: pago.payment_method_id || '', fecha: pago.date_approved || new Date().toISOString(),
+    recargo: Math.max(0, Math.round(monto - montoDe(p))),
   }, monto + 1 >= Number(p.total));
   return json({ ok: true });
 }
