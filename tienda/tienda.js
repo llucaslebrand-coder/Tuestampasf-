@@ -159,8 +159,9 @@
      x, y = desplazamiento desde el centro de la zona de estampa.
      ========================================================= */
   const ZONAS = {
-    frente: { label: 'Frente', area: { x: 600, y: 520, w: 380, h: 470 }, max: [30, 38], presets: [['Logo pecho', 9], ['Mediano', 20], ['Grande', 28]] },
-    espalda: { label: 'Espalda', area: { x: 600, y: 540, w: 440, h: 540 }, max: [32, 42], presets: [['Nuca', 8], ['Mediano', 22], ['Grande', 30]] },
+    // lim: área de trabajo = todo el cuerpo de la remera (sin mangas), en cm desde el centro del pecho
+    frente: { label: 'Frente', lim: { l: -23, r: 23, t: -23, b: 40 }, area: { x: 600, y: 520, w: 380, h: 470 }, max: [30, 38], presets: [['Logo pecho', 9], ['Mediano', 20], ['Grande', 28], ['Extra grande', 40]] },
+    espalda: { label: 'Espalda', lim: { l: -23, r: 23, t: -22, b: 42 }, area: { x: 600, y: 540, w: 440, h: 540 }, max: [32, 42], presets: [['Nuca', 8], ['Mediano', 22], ['Grande', 30], ['Extra grande', 40]] },
     // Manga: solo con las fotos de costado (en percha o puesta)
     manga: { label: 'Manga', area: null, max: [10, 12], presets: [['Chica', 6], ['Mediana', 8], ['Grande', 10]] },
   };
@@ -182,6 +183,20 @@
   const modeloActual = () => catalogo.find((m) => m.id === st.modelo) || catalogo[0];
   const colorActual = () => (modeloActual().colores.find((c) => c.nombre === st.color) || modeloActual().colores[0]);
   const MAX_POR_LADO = 4;
+  /* Límites del área de trabajo (cm, respecto del centro de la zona) */
+  function limites(side) {
+    // En las fotos: el área de trabajo es el cuerpo de la remera que se ve en esa foto
+    const v = vistaReal(side);
+    const r = CUERPO[`${v}-${side}`];
+    if (r) {
+      const c = calDe(v, side);
+      return { l: (r[0] - c.cx) / c.k, r: (r[1] - c.cx) / c.k, t: (r[2] - c.cy) / c.k, b: (r[3] - c.cy) / c.k };
+    }
+    const z = ZONAS[side];
+    if (z.lim) return z.lim;
+    return { l: -z.max[0] / 2, r: z.max[0] / 2, t: -z.max[1] / 2, b: z.max[1] / 2 };
+  }
+  const anchoMax = (side) => { const L = limites(side); return L.r - L.l; };
   const LADOS = ['frente', 'espalda', 'manga'];
   const CON_ARTICULO = { frente: 'el frente', espalda: 'la espalda', manga: 'la manga' };
   const lista = (side) => st.designs[side];
@@ -230,6 +245,13 @@
     return { cx: base.cx + (aj.cx || 0), cy: base.cy + (aj.cy || 0), k: base.k };
   };
   const FOTO_PX = 640;
+  /* Cuerpo de la remera (sin mangas) en cada foto, en píxeles de la foto: x0, x1, y0 (cuello), y1 (ruedo) */
+  const CUERPO = {
+    'percha-frente': [165, 457, 195, 630],
+    'percha-espalda': [170, 457, 150, 628],
+    'modelo-frente': [205, 440, 270, 600],
+    'modelo-espalda': [200, 420, 352, 632],
+  };
   const CON_FOTO = ['blanca', 'negra', 'azul-marino', 'gris-melange', 'beige', 'verde-ingles'];
   const slug = (txt) => String(txt).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   /* Vista que se puede usar de verdad (si el color no tiene foto, se muestra plana) */
@@ -394,12 +416,13 @@
     }
     if (opts.edit) {
       // Zona máxima de estampa (guía suave)
-      const g = geo(side), [mw, mh] = ZONAS[side].max;
+      // Área de trabajo (guía suave): todo el cuerpo de la remera
+      const g = geo(side), L = limites(side);
       c.save();
       c.strokeStyle = usaFoto ? 'rgba(255,255,255,.55)' : 'rgba(13,79,163,.28)';
       c.setLineDash([4, 6]);
       c.lineWidth = 1.5;
-      c.strokeRect((g.x - mw * g.k / 2) * k, (g.y - mh * g.k / 2) * k, mw * g.k * k, mh * g.k * k);
+      c.strokeRect((g.x + L.l * g.k) * k, (g.y + L.t * g.k) * k, (L.r - L.l) * g.k * k, (L.b - L.t) * g.k * k);
       if (opts.guideX) { c.strokeStyle = '#e5157a'; c.setLineDash([]); c.beginPath(); c.moveTo(g.x * k, 0); c.lineTo(g.x * k, size); c.stroke(); }
       c.restore();
     }
@@ -410,7 +433,13 @@
     $$('.view-tabs').forEach((box) => {
       const ladoManga = st.step === 2 && st.side === 'manga';
       box.innerHTML = VISTAS.map((v) => `<button type="button" data-vista="${v.id}" aria-pressed="${vistaReal(st.step === 2 ? st.side : 'frente') === v.id}" ${(v.id !== 'plana' && !hayFotos()) || (v.id === 'plana' && ladoManga) ? 'disabled' : ''}>${v.label}</button>`).join('');
-      $$('button', box).forEach((b) => b.addEventListener('click', () => { st.vista = b.dataset.vista; renderVistas(); redraw(); }));
+      $$('button', box).forEach((b) => b.addEventListener('click', () => {
+        st.vista = b.dataset.vista;
+        // Cada foto muestra un poco distinto el cuerpo: las estampas se acomodan dentro del área de esta vista
+        LADOS.forEach((side) => lista(side).forEach((d) => fitInside(d, side)));
+        renderVistas();
+        if (st.step === 2) renderStep2(); else redraw();
+      }));
     });
   }
 
@@ -490,7 +519,7 @@
     $('#drag-hint').hidden = !d;
     $('#mock-2').classList.toggle('has-design', !!d);
     if (d) {
-      const [mw] = ZONAS[st.side].max;
+      const mw = anchoMax(st.side);
       const size = $('#size');
       size.max = mw;
       size.value = d.w;
@@ -512,17 +541,18 @@
 
   /* Mantiene el diseño dentro de la zona de estampa */
   function fitInside(d, side = st.side) {
-    const [mw, mh] = ZONAS[side].max;
+    const L = limites(side), mw = L.r - L.l, mh = L.b - L.t;
     let h = d.w * d.img.height / d.img.width;
     if (h > mh) { d.w = mh * d.img.width / d.img.height; h = mh; }
     d.w = Math.min(d.w, mw);
-    d.x = clamp(d.x, -(mw - d.w) / 2, (mw - d.w) / 2);
-    d.y = clamp(d.y, -(mh - h) / 2, (mh - h) / 2);
+    h = d.w * d.img.height / d.img.width;
+    d.x = clamp(d.x, L.l + d.w / 2, L.r - d.w / 2);
+    d.y = clamp(d.y, L.t + h / 2, L.b - h / 2);
   }
   function setWidth(w) {
     const d = actual();
     if (!d) return;
-    d.w = clamp(w, 3, ZONAS[st.side].max[0]);
+    d.w = clamp(w, 3, anchoMax(st.side));
     fitInside(d);
   }
 

@@ -65,7 +65,7 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 /* Lienzo con la miniatura del otro lado */
 .canvas-wrap { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .mini-side {
-  position: absolute; right: 10px; bottom: 10px; display: grid; width: 26%; min-width: 86px; max-width: 140px; padding: 0;
+  position: absolute; top: 10px; right: 10px; display: grid; width: 22%; min-width: 80px; max-width: 124px; padding: 0;
   overflow: hidden; border: 2px solid var(--white); border-radius: 12px; background: #e4e4e7; box-shadow: 0 6px 18px #1b2a6e40; cursor: pointer;
 }
 .mini-side canvas { display: block; width: 100%; height: auto; aspect-ratio: 1; }
