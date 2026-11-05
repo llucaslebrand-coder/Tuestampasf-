@@ -305,6 +305,11 @@
     renderLienzo();
     $('#sheet-size').textContent = `${cm(ANCHO())} × ${cm(r.largo)} cm`;
     $('#sheet-use').textContent = r.copias ? `${r.copias} ${r.copias === 1 ? 'diseño' : 'diseños'} · usan ${cm(r.usado)} cm de largo` : 'Subí tus diseños para empezar';
+    // Aviso: lo que queda libre dentro del largo que se paga (mínimo o múltiplo del paso)
+    const libre = MODO() === 'metro' && r.copias ? r.largo - r.usado : 0;
+    const aviso = $('#dtf-libre');
+    aviso.hidden = libre < 8;
+    aviso.innerHTML = libre >= 8 ? `Te quedan <b>${cm(libre)} cm libres</b> en tu lienzo de ${metrosTxt(r.largo)}: podés sumar más diseños o copias <b>sin pagar más</b>.` : '';
     $('#upload-btn').querySelector('strong').textContent = piezas.length ? 'Sumar más diseños' : 'Subir diseños';
     const sum = $('#dtf-sum');
     sum.hidden = !piezas.length;

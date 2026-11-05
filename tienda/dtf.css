@@ -31,6 +31,7 @@
 .dtf-alto { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
 .qty.small button { width: 36px; height: 38px; font-size: 18px; }
 .qty.small input { width: 48px; height: 38px; font-size: 16px; }
+.dtf-libre { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #e3f7ea; color: #1e5f33; font-size: 14px; line-height: 1.45; }
 .dtf-price { color: var(--navy); font-size: 13px; font-weight: 800; }
 .dtf-warn { padding: 4px 8px; border-radius: 8px; background: #fff8e6; color: #7a4f00; font-size: 12px; }
 

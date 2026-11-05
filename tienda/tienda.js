@@ -680,13 +680,40 @@
   }
 
   /* Arrastrar el diseño (mouse y dedo) */
+  /* Arrastrar (un dedo o el mouse) y agrandar/achicar con dos dedos, el touchpad o Ctrl + ruedita */
   function initDrag() {
     const cv = $('#mock-2');
-    let start = null;
+    const dedos = new Map();      // pointerId → posición en el documento
+    let start = null;             // arrastre con un dedo
+    let pinza = null;             // gesto con dos dedos
     const toDoc = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * DOC, (e.clientY - r.top) / r.height * DOC]; };
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const medio = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    // Actualiza la medida y el precio sin rearmar toda la pantalla (más fluido mientras se mueve)
+    const actualizarMedida = () => {
+      const d = actual();
+      if (!d) return;
+      const h = d.w * d.img.height / d.img.width;
+      $('#size').value = d.w;
+      $('#size-label').textContent = `${cmTxt(d.w)} × ${cmTxt(h)} cm`;
+      updatePrice();
+    };
+    const empezarPinza = () => {
+      const d = actual();
+      const [a, b] = [...dedos.values()];
+      if (!d || !a || !b) return;
+      pinza = { d, d0: Math.max(10, dist(a, b)), w0: d.w, m0: medio(a, b), x0: d.x, y0: d.y };
+      start = null;
+      cv.classList.add('is-dragging');
+    };
     cv.addEventListener('pointerdown', (e) => {
       if (!hayEn(st.side)) return;
-      const [px, py] = toDoc(e);
+      const pos = toDoc(e);
+      dedos.set(e.pointerId, pos);
+      cv.setPointerCapture(e.pointerId);
+      if (dedos.size === 2) { empezarPinza(); return; }
+      if (dedos.size > 2) return;
+      const [px, py] = pos;
       const dentro = (d, pad) => { const r = designRect(st.side, d); return px >= r.x - pad && px <= r.x + r.w + pad && py >= r.y - pad && py <= r.y + r.h + pad; };
       // Primero la que está arriba; si no, la elegida con un margen para el dedo
       const L = lista(st.side);
@@ -695,14 +722,28 @@
       if (st.sel[st.side] !== d.id) { st.sel[st.side] = d.id; renderStep2(); }
       start = { px, py, x: d.x, y: d.y, d };
       drag.on = true;
-      cv.setPointerCapture(e.pointerId);
       cv.classList.add('is-dragging');
     });
     cv.addEventListener('pointermove', (e) => {
+      if (!dedos.has(e.pointerId)) return;
+      dedos.set(e.pointerId, toDoc(e));
+      const k = pxPerCm();
+      if (pinza && dedos.size >= 2) {
+        // Dos dedos: el tamaño sigue la distancia entre los dedos y la estampa acompaña el centro del gesto
+        const [a, b] = [...dedos.values()];
+        const d = pinza.d;
+        d.w = clamp(pinza.w0 * dist(a, b) / pinza.d0, 3, anchoMax(st.side));
+        const m = medio(a, b);
+        d.x = pinza.x0 + (m[0] - pinza.m0[0]) / k;
+        d.y = pinza.y0 + (m[1] - pinza.m0[1]) / k;
+        fitInside(d);
+        actualizarMedida();
+        redraw();
+        return;
+      }
       if (!start) return;
       const d = start.d;
-      const [px, py] = toDoc(e);
-      const k = pxPerCm();
+      const [px, py] = dedos.get(e.pointerId);
       d.x = start.x + (px - start.px) / k;
       d.y = start.y + (py - start.py) / k;
       drag.guideX = Math.abs(d.x) < 0.6;          // imán al centro
@@ -710,14 +751,41 @@
       fitInside(d);
       redraw();
     });
-    const end = () => { if (!start) return; start = null; drag.on = false; drag.guideX = false; cv.classList.remove('is-dragging'); redraw(); };
+    const end = (e) => {
+      dedos.delete(e.pointerId);
+      const habiaPinza = !!pinza;
+      if (dedos.size < 2) pinza = null;
+      if (dedos.size === 0 || habiaPinza) { start = null; drag.on = false; drag.guideX = false; }
+      if (dedos.size === 0) cv.classList.remove('is-dragging');
+      if (habiaPinza && !pinza) renderStep2(); else redraw();
+    };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
-    // Teclado: flechas mueven el diseño medio centímetro
+    // Computadora: pellizco del touchpad o Ctrl + ruedita del mouse
+    let ruedaFin = 0;
+    cv.addEventListener('wheel', (e) => {
+      const d = actual();
+      if (!d || !e.ctrlKey) return;
+      e.preventDefault();
+      d.w = clamp(d.w * Math.exp(-e.deltaY * 0.01), 3, anchoMax(st.side));
+      fitInside(d);
+      actualizarMedida();
+      redraw();
+      clearTimeout(ruedaFin);
+      ruedaFin = setTimeout(renderStep2, 250);
+    }, { passive: false });
+    // Teclado: flechas mueven el diseño medio centímetro; + y − cambian el tamaño
     cv.addEventListener('keydown', (e) => {
       const d = actual();
+      if (!d) return;
+      if (e.key === '+' || e.key === '-') {
+        e.preventDefault();
+        setWidth(d.w + (e.key === '+' ? 1 : -1));
+        renderStep2();
+        return;
+      }
       const mv = { ArrowLeft: [-0.5, 0], ArrowRight: [0.5, 0], ArrowUp: [0, -0.5], ArrowDown: [0, 0.5] }[e.key];
-      if (!d || !mv) return;
+      if (!mv) return;
       e.preventDefault();
       d.x += mv[0]; d.y += mv[1];
       fitInside(d);
