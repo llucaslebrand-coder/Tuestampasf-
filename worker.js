@@ -19,10 +19,11 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
 });
 const ID_OK = /^[a-z0-9]{6,40}$/;
+const mpToken = (env) => (env.MP_ACCESS_TOKEN || '').trim();
 
 /* ---------- Supabase con la clave secreta (lee y marca pedidos) ---------- */
 function sbHeaders(env) {
-  const k = env.SUPABASE_SECRET_KEY || '';
+  const k = (env.SUPABASE_SECRET_KEY || '').trim();   // sin espacios ni saltos de línea pegados de más
   const h = { apikey: k, 'Content-Type': 'application/json' };
   if (k.startsWith('eyJ')) h.Authorization = `Bearer ${k}`;   // clave service_role antigua
   return h;
@@ -82,7 +83,7 @@ async function crearPago(request, env) {
   };
   const res = await fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': `${p.id}-${monto}-${Date.now()}` },
+    headers: { Authorization: `Bearer ${mpToken(env)}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': `${p.id}-${monto}-${Date.now()}` },
     body: JSON.stringify(pref),
   });
   const data = await res.json().catch(() => ({}));
@@ -102,7 +103,7 @@ async function webhook(request, env) {
   const pagoId = (body.data && body.data.id) || url.searchParams.get('data.id') || url.searchParams.get('id');
   if (tipo !== 'payment' || !/^\d+$/.test(String(pagoId || ''))) return json({ ok: true, ignorado: true });
   // Se consulta el pago directo a Mercado Pago: así nadie puede mandar un aviso falso
-  const res = await fetch(`https://api.mercadopago.com/v1/payments/${pagoId}`, { headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` } });
+  const res = await fetch(`https://api.mercadopago.com/v1/payments/${pagoId}`, { headers: { Authorization: `Bearer ${mpToken(env)}` } });
   if (!res.ok) return json({ ok: false }, 500);   // Mercado Pago reintenta más tarde
   const pago = await res.json();
   const id = pago.external_reference;
