@@ -1705,6 +1705,9 @@
             <button type="button" class="panel-btn" id="aj-exp">↓ Descargar copia</button>
             <label class="panel-btn" style="cursor:pointer">⇪ Restaurar copia<input type="file" id="aj-imp" accept="application/json" hidden></label>
           </div>
+          <h2 style="margin-top:18px">🧹 Empezar de cero</h2>
+          <p>Borra <b>todos los pedidos</b> (con sus imágenes), el historial de movimientos y deja <b>el stock de todo en 0</b>. Los modelos, códigos de barra, precios y ajustes quedan igual. Antes de borrar se descarga una copia por las dudas.</p>
+          <div class="row-actions" style="justify-content:flex-start"><button type="button" class="panel-btn" id="aj-reset" style="color:#b3261e;border-color:#b3261e">🧹 Borrar pedidos y poner el stock en 0</button></div>
           <h2 style="margin-top:18px">🌐 Accesos</h2>
           <p><a href="../herramientas.html" target="_blank" rel="noopener">Abrir las herramientas en otra pestaña</a></p>
           <p><a href="../index.html" target="_blank" rel="noopener">Abrir la tienda para clientes</a></p>
@@ -1795,6 +1798,54 @@
     $('#aj-exp', el).addEventListener('click', () => {
       const blob = new Blob([JSON.stringify({ app: 'tuestampa-panel', version: 1, fecha: new Date().toISOString(), data: Store.data }, null, 1)], { type: 'application/json' });
       downloadBlob(blob, `copia-tuestampa-${new Date().toISOString().slice(0, 10)}.json`);
+    });
+    /* Empezar de cero: borra pedidos (e imágenes) y movimientos, y pone el stock en 0 */
+    $('#aj-reset', el).addEventListener('click', async (e) => {
+      const n = Store.data.pedidos.length;
+      const r = prompt(`Se van a borrar ${n} pedido${n === 1 ? '' : 's'}, todo el historial de movimientos y el stock queda en 0.\nNo se puede deshacer.\n\nPara confirmar escribí BORRAR`);
+      if ((r || '').trim().toUpperCase() !== 'BORRAR') { if (r !== null) toast('No se borró nada (había que escribir BORRAR).', true); return; }
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Borrando…';
+      try {
+        // Copia de seguridad automática antes de borrar
+        const blob = new Blob([JSON.stringify({ app: 'tuestampa-panel', version: 1, fecha: new Date().toISOString(), data: Store.data }, null, 1)], { type: 'application/json' });
+        downloadBlob(blob, `copia-antes-de-limpiar-${new Date().toISOString().slice(0, 10)}.json`);
+        const ahora = new Date().toISOString();
+        if (Store.mode === 'cloud') {
+          const sb = Store.sb;
+          // Imágenes: todo lo que haya en el bucket "pedidos" (carpetas incluidas)
+          const rutas = [];
+          const listar = async (carpeta, nivel) => {
+            for (let off = 0; ; off += 1000) {
+              const { data, error } = await sb.storage.from('pedidos').list(carpeta, { limit: 1000, offset: off });
+              if (error || !data || !data.length) break;
+              for (const it of data) {
+                const ruta = carpeta ? `${carpeta}/${it.name}` : it.name;
+                if (it.id) rutas.push(ruta); else if (nivel < 4) await listar(ruta, nivel + 1);
+              }
+              if (data.length < 1000) break;
+            }
+          };
+          await listar('', 0);
+          for (let i = 0; i < rutas.length; i += 100) await sb.storage.from('pedidos').remove(rutas.slice(i, i + 100));
+          let res = await sb.from('pedidos').delete().neq('id', '');
+          if (res.error) throw res.error;
+          res = await sb.from('movimientos').delete().neq('id', '');
+          if (res.error) throw res.error;
+          res = await sb.from('variantes').update({ stock: 0, actualizado: ahora }).neq('id', '');
+          if (res.error) throw res.error;
+        } else {
+          for (const p of Store.data.pedidos) for (const im of (p.imagenes || [])) { try { await Store.removeImage(im.ref || im); } catch (err) { /* sigue */ } }
+        }
+        Store.data.pedidos = [];
+        Store.data.movimientos = [];
+        Store.data.variantes.forEach((v) => { v.stock = 0; v.actualizado = ahora; });
+        if (Store.mode !== 'cloud') Store.persistLocal();
+        toast('Listo: pedidos borrados y stock en 0. ¡A arrancar!');
+        refresh();
+      } catch (err) {
+        toast('No se pudo terminar de limpiar: ' + (err.message || err), true);
+        btn.disabled = false; btn.textContent = '🧹 Borrar pedidos y poner el stock en 0';
+      }
     });
     $('#aj-imp', el).addEventListener('change', async (e) => {
       const f = e.target.files[0];
