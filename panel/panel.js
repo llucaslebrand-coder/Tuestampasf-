@@ -612,29 +612,45 @@
   }
 
   /* Formulario de pedido (nuevo o desde el cotizador) */
-  function pedidoForm(pref = {}) {
-    const modelos = Store.data.modelos.filter((m) => m.activo !== false);
+  /* Formulario de pedido: nuevo, o editar uno existente (pasando su id) */
+  function pedidoForm(pref = {}, editId = null) {
+    const orig = editId ? Store.data.pedidos.find((x) => x.id === editId) : null;
+    const remerasOrig = orig ? (orig.items || []).filter((x) => x.tipo !== 'dtf') : [];
+    const soloDtf = !!orig && !remerasOrig.length;   // pedido de DTF solo: no se editan remeras ni estampas
+    if (orig) {
+      const it0 = remerasOrig[0] || {};
+      pref = { cliente: orig.cliente, telefono: orig.telefono, modelo_id: it0.modelo_id, estampas: it0.estampas, total: orig.total, notas: orig.notas };
+    }
+    const modelos = Store.data.modelos.filter((m) => m.activo !== false || (orig && m.id === pref.modelo_id));
     const m0 = modeloDe(pref.modelo_id) || modelos[0];
     const est = pref.estampas && pref.estampas.length ? pref.estampas : [{ zona: 'Pecho', ancho: 10, alto: 10, cantidad: 1 }];
-    openModal('Nuevo pedido', `
+    openModal(orig ? `Editar pedido #${orig.numero || '–'}` : 'Nuevo pedido', `
       <form id="pf" class="form-grid">
         <label class="field"><span class="field-label">Cliente</span><input type="text" id="pf-cli" required maxlength="80" value="${esc(pref.cliente || '')}"></label>
         <label class="field"><span class="field-label">WhatsApp</span><input type="tel" id="pf-tel" placeholder="Ej.: 3424 123456" value="${esc(pref.telefono || '')}"></label>
+        <div style="display:${soloDtf ? 'none' : 'contents'}">
         <label class="field"><span class="field-label">Modelo</span><select id="pf-mod">${modelos.map((m) => `<option value="${m.id}" ${m === m0 ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
         <div class="field full"><span class="field-label">Remeras (mismo diseño para todas)</span><div id="pf-lin"></div><button type="button" class="panel-btn" id="pf-lin-add">＋ Otro talle o color</button></div>
         <div class="field full"><span class="field-label">Estampas</span><div id="pf-est"></div><button type="button" class="panel-btn" id="pf-add">＋ Agregar estampa</button></div>
-        <label class="field"><span class="field-label">Total ($) · se calcula solo, podés cambiarlo</span><input type="number" id="pf-total" min="0" step="100" value="${Math.round(pref.total || 0)}"></label>
-        <label class="field"><span class="field-label">Estado</span><select id="pf-est-sel">${ESTADOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
-        <label class="field full"><span class="field-label">Imágenes del cliente</span><input type="file" id="pf-img" accept="image/*,.pdf" multiple></label>
+        </div>
+        ${soloDtf ? `<div class="field full"><span class="field-label">Pedido</span><ul class="order-items">${itemsResumen(orig).map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+        <label class="field"><span class="field-label">Total ($) · ${orig ? 'el importe acordado' : 'se calcula solo, podés cambiarlo'}</span><input type="number" id="pf-total" min="0" step="100" value="${Math.round(pref.total || 0)}"></label>
+        ${orig
+    ? `<label class="field"><span class="field-label">Seña ($) · 0 si no hay</span><input type="number" id="pf-sena" min="0" step="100" value="${Math.round(Number(orig.sena) || 0)}"></label>
+       <label class="check full"><input type="checkbox" id="pf-sena-ok" ${orig.sena_pagada || !['sena', 'nuevo'].includes(orig.estado) ? 'checked' : ''}> La seña ya está cobrada</label>`
+    : `<label class="field"><span class="field-label">Estado</span><select id="pf-est-sel">${ESTADOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>`}
+        <label class="field full"><span class="field-label">${orig ? 'Agregar imágenes' : 'Imágenes del cliente'}</span><input type="file" id="pf-img" accept="image/*,.pdf" multiple></label>
         <label class="field full"><span class="field-label">Notas</span><textarea id="pf-notas" maxlength="1000">${esc(pref.notas || '')}</textarea></label>
         <div class="field-help full pf-calc"><span id="pf-calc"></span> <button type="button" class="panel-btn" id="pf-recalc" hidden>↺ Usar el precio calculado</button></div>
         <p class="field-help full" id="pf-stock"></p>
       </form>
-      <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pf-ok">Guardar pedido</button></div>`, (body) => {
+      <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pf-ok">${orig ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`, (body) => {
       const mod = $('#pf-mod', body);
       // Renglones de remeras: color, talle y cantidad (todas con las mismas estampas)
       const m0x = modeloDe(mod.value);
-      const lineas = [{ color: pref.color || m0x.colores[0].nombre, talle: pref.talle || m0x.talles[0], cantidad: pref.cantidad || 1 }];
+      const lineas = remerasOrig.length
+        ? remerasOrig.map((it) => ({ color: it.color, talle: it.talle, cantidad: Number(it.cantidad) || 1 }))
+        : [{ color: pref.color || m0x.colores[0].nombre, talle: pref.talle || m0x.talles[0], cantidad: pref.cantidad || 1 }];
       const linBox = $('#pf-lin', body);
       const drawLin = () => {
         const m = modeloDe(mod.value);
@@ -666,7 +682,7 @@
       /* Precio: remera del modelo + estampas (con el cotizador) × cantidad de remeras.
          Se calcula solo hasta que escribís un total a mano; ahí se respeta el tuyo. */
       const totalInp = $('#pf-total', body);
-      let manual = Number(pref.total) > 0;   // desde el cotizador ya viene un total
+      let manual = Number(pref.total) > 0;   // desde el cotizador o al editar ya viene un total
       let calculado = 0;
       function recalc() {
         const prendas = lineas.reduce((a, l) => a + (Number(l.cantidad) || 0), 0) || 1;
@@ -708,6 +724,7 @@
         try {
           const imgs = [];
           for (const f of $('#pf-img', body).files) imgs.push(await Store.putImage(f));
+          if (orig) { await guardarEdicion(orig, { body, imgs, cliente, soloDtf, items: soloDtf ? orig.items : lineas.map((l) => ({ modelo_id: mod.value, color: l.color, talle: l.talle, cantidad: l.cantidad, estampas: rows.map((e) => ({ ...e })) })) }); return; }
           const numero = Store.mode === 'local' ? Store.data.pedidos.reduce((a, p) => Math.max(a, p.numero || 0), 0) + 1 : undefined;
           const p = {
             id: uid(), fecha: new Date().toISOString(), origen: 'panel', cliente,
@@ -726,10 +743,43 @@
           console.error(err);
           toast('No se pudo guardar: ' + err.message, true);
           btn.disabled = false;
-          btn.textContent = 'Guardar pedido';
+          btn.textContent = orig ? 'Guardar cambios' : 'Guardar pedido';
         }
       });
     });
+  }
+
+  /* Guarda los cambios de un pedido existente. Si el stock ya se había
+     descontado, ajusta la diferencia de remeras (devuelve o descuenta). */
+  async function guardarEdicion(orig, { body, imgs, cliente, items }) {
+    const total = Math.max(0, Math.round(Number($('#pf-total', body).value) || 0));
+    const sena = Math.max(0, Math.round(Number($('#pf-sena', body).value) || 0));
+    if (sena > total) throw new Error('la seña no puede ser mayor que el total');
+    const p = {
+      ...orig, cliente, telefono: $('#pf-tel', body).value.trim(), items, total, sena,
+      sena_pagada: sena > 0 ? $('#pf-sena-ok', body).checked : orig.sena_pagada,
+      notas: $('#pf-notas', body).value.trim(), imagenes: [...(orig.imagenes || []), ...imgs],
+    };
+    if (orig.stock_descontado) {
+      const cuenta = (its) => {
+        const m = new Map();
+        (its || []).filter((x) => x.tipo !== 'dtf').forEach((x) => { const k = `${x.modelo_id}|${x.color}|${x.talle}`; m.set(k, (m.get(k) || 0) + (Number(x.cantidad) || 1)); });
+        return m;
+      };
+      const antes = cuenta(orig.items), despues = cuenta(items);
+      for (const k of new Set([...antes.keys(), ...despues.keys()])) {
+        const dif = (antes.get(k) || 0) - (despues.get(k) || 0);   // + devuelve al stock, − descuenta
+        if (!dif) continue;
+        const [modelo_id, color, talle] = k.split('|');
+        const v = Store.data.variantes.find((x) => x.modelo_id === modelo_id && x.color === color && x.talle === talle);
+        if (v) await changeStock(v, dif, 'pedido', `Pedido #${orig.numero || ''} editado · ${cliente}`);
+      }
+    }
+    await Store.save('pedidos', p);
+    closeModal();
+    toast('Pedido actualizado.');
+    refresh();
+    pedidoDetalle(p.id);
   }
 
   async function descontarStockPedido(p, silencioso = false) {
@@ -956,6 +1006,7 @@
       <p class="field-help">${p.stock_descontado ? '✓ El stock de este pedido ya se descontó.' : 'El stock se descuenta solo cuando el pedido pasa a producción.'}</p>
       <div class="row-actions">
         <button type="button" class="panel-btn danger-btn" id="pd-del">Eliminar</button>
+        <button type="button" class="panel-btn" id="pd-edit">✎ Editar pedido e importe</button>
         ${p.telefono ? '<button type="button" class="panel-btn" id="pd-wa">WhatsApp</button>' : ''}
         ${!p.stock_descontado && ['produccion', 'listo', 'entregado'].includes(p.estado) ? '<button type="button" class="panel-btn" id="pd-stock">Descontar stock</button>' : ''}
         <button type="button" class="download" data-close>Listo</button>
@@ -965,6 +1016,7 @@
         refresh();
         pedidoDetalle(id);
       });
+      $('#pd-edit', body).addEventListener('click', () => pedidoForm({}, id));
       const lz = $('#pd-lienzo', body);
       if (lz) lz.addEventListener('click', () => { closeModal(); abrirLienzoPedido(Store.data.pedidos.find((x) => x.id === id)); });
       const nx = $('#pd-next', body);
