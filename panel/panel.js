@@ -623,10 +623,11 @@
         <label class="field"><span class="field-label">Modelo</span><select id="pf-mod">${modelos.map((m) => `<option value="${m.id}" ${m === m0 ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
         <div class="field full"><span class="field-label">Remeras (mismo diseño para todas)</span><div id="pf-lin"></div><button type="button" class="panel-btn" id="pf-lin-add">＋ Otro talle o color</button></div>
         <div class="field full"><span class="field-label">Estampas</span><div id="pf-est"></div><button type="button" class="panel-btn" id="pf-add">＋ Agregar estampa</button></div>
-        <label class="field"><span class="field-label">Total ($)</span><input type="number" id="pf-total" min="0" step="1" value="${Math.round(pref.total || 0)}"></label>
+        <label class="field"><span class="field-label">Total ($) · se calcula solo, podés cambiarlo</span><input type="number" id="pf-total" min="0" step="100" value="${Math.round(pref.total || 0)}"></label>
         <label class="field"><span class="field-label">Estado</span><select id="pf-est-sel">${ESTADOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
         <label class="field full"><span class="field-label">Imágenes del cliente</span><input type="file" id="pf-img" accept="image/*,.pdf" multiple></label>
         <label class="field full"><span class="field-label">Notas</span><textarea id="pf-notas" maxlength="1000">${esc(pref.notas || '')}</textarea></label>
+        <div class="field-help full pf-calc"><span id="pf-calc"></span> <button type="button" class="panel-btn" id="pf-recalc" hidden>↺ Usar el precio calculado</button></div>
         <p class="field-help full" id="pf-stock"></p>
       </form>
       <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pf-ok">Guardar pedido</button></div>`, (body) => {
@@ -648,11 +649,12 @@
           ${lineas.length > 1 ? '<button type="button" class="icon-btn danger" aria-label="Quitar renglón">✕</button>' : ''}</div>`).join('');
         $$('.stamp-row', linBox).forEach((r) => {
           const i = Number(r.dataset.i);
-          $$('[data-k]', r).forEach((inp) => inp.addEventListener('change', () => { lineas[i][inp.dataset.k] = inp.dataset.k === 'cantidad' ? Math.max(1, Math.round(Number(inp.value) || 1)) : inp.value; showStock(); }));
+          $$('[data-k]', r).forEach((inp) => ['input', 'change'].forEach((ev) => inp.addEventListener(ev, () => { lineas[i][inp.dataset.k] = inp.dataset.k === 'cantidad' ? Math.max(1, Math.round(Number(inp.value) || 1)) : inp.value; showStock(); recalc(); })));
           const x = r.querySelector('button');
           if (x) x.addEventListener('click', () => { lineas.splice(i, 1); drawLin(); });
         });
         showStock();
+        recalc();
       };
       const showStock = () => {
         const txt = lineas.map((l) => {
@@ -661,11 +663,26 @@
         }).filter(Boolean);
         $('#pf-stock', body).textContent = txt.length ? `Stock: ${txt.join(' · ')}.` : '';
       };
+      /* Precio: remera del modelo + estampas (con el cotizador) × cantidad de remeras.
+         Se calcula solo hasta que escribís un total a mano; ahí se respeta el tuyo. */
+      const totalInp = $('#pf-total', body);
+      let manual = Number(pref.total) > 0;   // desde el cotizador ya viene un total
+      let calculado = 0;
+      function recalc() {
+        const prendas = lineas.reduce((a, l) => a + (Number(l.cantidad) || 0), 0) || 1;
+        const r = calcular(cotizador(), { modelo_id: mod.value, prendas, base: null, diseno: false, estampas: rows });
+        calculado = Math.round(r.total);
+        $('#pf-calc', body).innerHTML = `Calculado: <b>${money(calculado)}</b> = ${prendas} ${prendas === 1 ? 'remera' : 'remeras'} × ${money(r.porPrenda)} (remera ${money(r.base)}${r.estPorPrenda ? ` + estampas ${money(r.estPorPrenda)}` : ''})`;
+        if (!manual) totalInp.value = calculado;
+        $('#pf-recalc', body).hidden = !manual || Number(totalInp.value) === calculado;
+      }
+      totalInp.addEventListener('input', () => { manual = totalInp.value !== '' && Number(totalInp.value) !== calculado; $('#pf-recalc', body).hidden = !manual; });
+      $('#pf-recalc', body).addEventListener('click', () => { manual = false; recalc(); });
       mod.addEventListener('change', drawLin);
       $('#pf-lin-add', body).addEventListener('click', () => { const u = lineas[lineas.length - 1]; lineas.push({ color: u.color, talle: u.talle, cantidad: 1 }); drawLin(); });
-      drawLin();
       const estBox = $('#pf-est', body);
       const rows = est.map((e) => ({ ...e }));
+      drawLin();
       const drawEst = () => {
         estBox.innerHTML = rows.map((e, i) => `<div class="stamp-row" data-i="${i}">
           <label>Zona<select data-k="zona">${ZONAS.map((z) => `<option ${z === e.zona ? 'selected' : ''}>${z}</option>`).join('')}</select></label>
@@ -675,9 +692,10 @@
           <button type="button" class="icon-btn danger" aria-label="Quitar estampa">✕</button></div>`).join('');
         $$('.stamp-row', estBox).forEach((r) => {
           const i = Number(r.dataset.i);
-          $$('[data-k]', r).forEach((inp) => inp.addEventListener('change', () => { rows[i][inp.dataset.k] = inp.dataset.k === 'zona' ? inp.value : Number(inp.value); }));
+          $$('[data-k]', r).forEach((inp) => ['input', 'change'].forEach((ev) => inp.addEventListener(ev, () => { rows[i][inp.dataset.k] = inp.dataset.k === 'zona' ? inp.value : Number(inp.value); recalc(); })));
           r.querySelector('button').addEventListener('click', () => { rows.splice(i, 1); drawEst(); });
         });
+        recalc();
       };
       drawEst();
       $('#pf-add', body).addEventListener('click', () => { rows.push({ zona: 'Espalda', ancho: 25, alto: 30, cantidad: 1 }); drawEst(); });
