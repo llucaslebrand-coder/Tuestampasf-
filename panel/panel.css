@@ -268,3 +268,28 @@ a.tool-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px
 .prov-card td { padding: 5px 2px; border-top: 1px solid #eef0f5; }
 .prov-card td:last-child { width: 3.5em; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
 .prov-card tfoot td { border-top: 2px solid #c9cfdc; color: #1b2a6e; font-weight: 800; }
+
+/* Pedidos en el celular: cada pedido es una tarjeta y los filtros se deslizan */
+@media (max-width: 640px) {
+  .tabs { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding: 2px 16px 6px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; }
+  .tbl-pedidos, .tbl-pedidos tbody { display: block; }
+  .tbl-pedidos thead { display: none; }
+  .tbl-pedidos tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px;
+    grid-template-areas: "num est" "cli tot" "det det" "fecha fecha";
+    padding: 12px 14px; border-bottom: 1px solid #e6e9f0;
+  }
+  .tbl-pedidos tr:last-child { border-bottom: 0; }
+  .tbl-pedidos td { display: block; padding: 0; border: 0; white-space: normal; }
+  .tbl-pedidos .tp-num { grid-area: num; color: #5b6478; font-size: 14px; }
+  .tbl-pedidos .tp-est { grid-area: est; justify-self: end; }
+  .tbl-pedidos .tp-cli { grid-area: cli; font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
+  .tbl-pedidos .tp-tot { grid-area: tot; align-self: center; font-size: 17px; font-weight: 800; }
+  .tbl-pedidos .tp-det { grid-area: det; max-width: none !important; color: #5b6478; font-size: 14px; line-height: 1.4; }
+  .tbl-pedidos .tp-fecha { grid-area: fecha; color: #8a91a3; font-size: 12px; }
+}
+
+/* Que los adornos del encabezado no generen desplazamiento lateral en el celular */
+html, body { overflow-x: clip; }

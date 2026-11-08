@@ -626,11 +626,11 @@
     el.innerHTML = head('Pedidos', ayuda,
       '<button type="button" class="panel-btn primary" data-act="new">＋ Nuevo pedido</button>') + `
       <div class="tabs" role="group" aria-label="Filtrar pedidos">${filtros.map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${pedidoFiltro === k}">${l}</button>`).join('')}</div>
-      ${list.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Detalle</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
+      ${list.length ? `<div class="table-wrap"><table class="tbl tbl-pedidos"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Detalle</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
         ${list.map((p) => `<tr data-id="${p.id}" style="cursor:pointer" tabindex="0">
-          <td>#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td>${fmtDate(p.fecha)}</td>
-          <td>${esc(p.cliente)}</td><td style="white-space:normal;max-width:320px">${esc(itemsResumen(p).join(' · '))}</td>
-          <td><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num">${money(p.total)}</td></tr>`).join('')}
+          <td class="tp-num">#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td class="tp-fecha">${fmtDate(p.fecha)}</td>
+          <td class="tp-cli">${esc(p.cliente)}</td><td class="tp-det" style="white-space:normal;max-width:320px">${esc(itemsResumen(p).join(' · '))}</td>
+          <td class="tp-est"><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num tp-tot">${money(p.total)}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="box"><p class="empty">No hay pedidos en esta lista.</p></div>'}`;
     el.querySelector('[data-act="new"]').addEventListener('click', () => pedidoForm());
     $$('.tabs button', el).forEach((b) => b.addEventListener('click', () => { pedidoFiltro = b.dataset.f; refresh(); }));
