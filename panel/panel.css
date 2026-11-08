@@ -258,3 +258,13 @@ a.tool-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px
 .legend { display: flex; gap: 14px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+/* Lista para el proveedor (Reponer) */
+.prov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.prov-card { padding: 12px 14px; border: 1px solid var(--line, #dfe3ec); border-radius: 14px; background: #fff; }
+.prov-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 15px; }
+.prov-card h3 i { flex: none; width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1px #c4c6cc; }
+.prov-card table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.prov-card td { padding: 5px 2px; border-top: 1px solid #eef0f5; }
+.prov-card td:last-child { width: 3.5em; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.prov-card tfoot td { border-top: 2px solid #c9cfdc; color: #1b2a6e; font-weight: 800; }

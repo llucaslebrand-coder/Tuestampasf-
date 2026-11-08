@@ -449,15 +449,29 @@
   };
   const remeraTxt = (r) => `${(modeloDe(r.modelo_id) || {}).nombre || 'Remera'} ${r.color} T${r.talle}`;
   /* Texto para mandarle al proveedor: agrupado por modelo y color */
-  function listaProveedor(items) {
+  /* Agrupa lo que hay que pedir por modelo y color, con los talles en orden */
+  function gruposProveedor(items) {
     const grupos = new Map();
     items.filter((x) => x.cant > 0).sort(ordenVar).forEach((x) => {
-      const k = `${(modeloDe(x.modelo_id) || {}).nombre || 'Remera'} ${x.color}`;
-      if (!grupos.has(k)) grupos.set(k, []);
-      grupos.get(k).push(`T${x.talle} ×${x.cant}`);
+      const k = `${x.modelo_id}|${x.color}`;
+      if (!grupos.has(k)) grupos.set(k, { modelo: (modeloDe(x.modelo_id) || {}).nombre || 'Remera', modelo_id: x.modelo_id, color: x.color, talles: [], total: 0 });
+      const g = grupos.get(k);
+      g.talles.push({ talle: x.talle, cant: x.cant });
+      g.total += x.cant;
     });
-    const total = items.reduce((a, x) => a + x.cant, 0);
-    return [`Pedido de remeras · Tu Estampa SF · ${fmtDate(new Date())}`, ...[...grupos].map(([k, ts]) => `• ${k}: ${ts.join(', ')}`), `Total: ${total} ${total === 1 ? 'remera' : 'remeras'}`].join('\n');
+    return [...grupos.values()];
+  }
+  const plural = (n) => `${n} ${n === 1 ? 'remera' : 'remeras'}`;
+  /* Texto para WhatsApp: un bloque por color, un talle por renglón */
+  function listaProveedor(items) {
+    const gs = gruposProveedor(items);
+    const total = gs.reduce((a, g) => a + g.total, 0);
+    return [
+      '*Pedido de remeras · Tu Estampa SF*',
+      fmtDate(new Date()),
+      ...gs.map((g) => `\n*${g.modelo} · ${g.color}* (${plural(g.total)})\n${g.talles.map((t) => `   Talle ${t.talle}: ${t.cant}`).join('\n')}`),
+      `\n*Total: ${plural(total)}*`,
+    ].join('\n');
   }
 
   let reponerConMinimo = false;
@@ -475,7 +489,8 @@
     const dot = (r) => `<span class="color-name"><i style="background:${colorDe(modeloDe(r.modelo_id), r.color).hex}"></i>${esc(remeraTxt(r))}</span>`;
     el.innerHTML = head('Reponer stock', 'Las remeras que te pidieron los clientes y no tenés, para comprarle al proveedor. Se actualiza solo con cada pedido.', `
         <button type="button" class="panel-btn" data-act="csv" ${aPedir.length ? '' : 'disabled'}>↓ Excel (CSV)</button>
-        <button type="button" class="panel-btn primary" data-act="copy" ${aPedir.length ? '' : 'disabled'}>⧉ Copiar lista para el proveedor</button>`) + `
+        <button type="button" class="panel-btn" data-act="copy" ${aPedir.length ? '' : 'disabled'}>⧉ Copiar lista</button>
+        <button type="button" class="panel-btn primary" data-act="wa" ${aPedir.length ? '' : 'disabled'}>Enviar a mi WhatsApp</button>`) + `
       <div class="stats">
         <div class="stat ${totalFaltan ? 'is-alert' : ''}"><small>Faltan para pedidos</small><strong>${totalFaltan}</strong><span>${urg.length} ${urg.length === 1 ? 'combinación' : 'combinaciones'} de color y talle</span></div>
         <div class="stat"><small>Si pagan la seña</small><strong>${espera.reduce((a, r) => a + r.faltanEspera, 0)}</strong><span>faltarían además</span></div>
@@ -496,7 +511,15 @@
         ${bajos.map((v) => `<tr><td>${dot(v)}</td><td class="num">${v.stock}</td><td class="num">${v.minimo}</td><td class="num">${v.minimo - Math.max(0, v.stock)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nada debajo del mínimo. ✓</p>'}
       </details>
       <label class="check" style="margin-top:10px"><input type="checkbox" id="rp-min" ${reponerConMinimo ? 'checked' : ''}> Sumar a la lista del proveedor lo que falta para llegar al mínimo</label></section>
-      ${aPedir.length ? `<section class="box"><h2>Lista para el proveedor</h2><pre class="panel-note" style="white-space:pre-wrap;font:inherit">${esc(listaProveedor(aPedir))}</pre></section>` : ''}`;
+      ${aPedir.length ? `<section class="box"><h2>Lista para el proveedor · ${plural(aPedir.reduce((a, x) => a + x.cant, 0))}</h2>
+        <div class="prov-grid">${gruposProveedor(aPedir).map((g) => `<div class="prov-card">
+          <h3><i style="background:${colorDe(modeloDe(g.modelo_id), g.color).hex}"></i>${esc(g.modelo)} · ${esc(g.color)}</h3>
+          <table><tbody>${g.talles.map((t) => `<tr><td>Talle ${esc(t.talle)}</td><td>${t.cant}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td>Total</td><td>${g.total}</td></tr></tfoot></table></div>`).join('')}</div>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:12px">
+          <button type="button" class="panel-btn primary" data-act="wa">Enviar a mi WhatsApp</button>
+          <button type="button" class="panel-btn" data-act="copy">⧉ Copiar lista</button></div>
+        <p class="field-help">Se manda al WhatsApp del negocio cargado en Ajustes → Tienda${(Store.data.config.tienda || {}).whatsapp ? ` (${esc(Store.data.config.tienda.whatsapp)})` : ' (todavía no hay número cargado)'}. Desde ahí lo reenviás al proveedor.</p></section>` : ''}`;
     $('#rp-min', el).addEventListener('change', (e) => { reponerConMinimo = e.target.checked; refresh(); });
     $$('[data-ped]', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); pedidoDetalle(a.dataset.ped); }));
     $$('[data-llego]', el).forEach((b) => b.addEventListener('click', async () => {
@@ -507,11 +530,17 @@
       toast(`＋${q} ${remeraTxt(r)} cargadas al stock.`);
       refresh();
     }));
-    const copiar = el.querySelector('[data-act="copy"]');
-    copiar.addEventListener('click', async () => {
+    $$('[data-act="copy"]', el).forEach((b) => b.addEventListener('click', async () => {
       const t = listaProveedor(aPedir);
       try { await navigator.clipboard.writeText(t); toast('Lista copiada: pegala en el WhatsApp del proveedor.'); } catch (e) { prompt('Copiá la lista:', t); }
-    });
+    }));
+    // Abre WhatsApp con la lista lista para mandarte a tu propio número
+    $$('[data-act="wa"]', el).forEach((b) => b.addEventListener('click', () => {
+      const tel = (Store.data.config.tienda || {}).whatsapp;
+      const link = waLink(tel, listaProveedor(aPedir));
+      if (!link) { toast('Cargá tu WhatsApp en Ajustes → Tienda para poder enviarte la lista.', true); return; }
+      window.open(link, '_blank', 'noopener');
+    }));
     el.querySelector('[data-act="csv"]').addEventListener('click', () => {
       const filas = [['Modelo', 'Color', 'Talle', 'Cantidad a pedir', 'Stock actual', 'Pedidos']];
       aPedir.slice().sort(ordenVar).forEach((x) => {
