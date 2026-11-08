@@ -171,8 +171,7 @@
     step: 1,
     modelo: null,
     color: null,
-    talle: null,
-    cantidad: 1,
+    lineas: [],        // remeras elegidas: [{ color, talle, cantidad }] (mismo diseño para todas)
     side: 'frente',
     vista: 'percha',   // percha, modelo o plana
     designs: { frente: [], espalda: [], manga: [] },   // varias estampas por lado: { id, img (canvas), name, w (cm), x, y, bgRemoved }
@@ -180,6 +179,22 @@
     reemplazar: false,                      // «Cambiar imagen» reemplaza la elegida en vez de sumar otra
     pedidoId: null,
   };
+  const cantidadTotal = () => st.lineas.reduce((a, l) => a + l.cantidad, 0);
+  const MAX_REMERAS = 200;
+  /* Remeras elegidas ordenadas como en el catálogo (color y talle) */
+  function lineasOrdenadas() {
+    const m = modeloActual();
+    const ci = (c) => m.colores.findIndex((x) => x.nombre === c), ti = (t) => m.talles.indexOf(t);
+    return st.lineas.filter((l) => l.cantidad > 0).sort((a, b) => ci(a.color) - ci(b.color) || ti(a.talle) - ti(b.talle));
+  }
+  function sumarRemera(color, talle, delta) {
+    let l = st.lineas.find((x) => x.color === color && x.talle === talle);
+    if (!l) { l = { color, talle, cantidad: 0 }; st.lineas.push(l); }
+    const libre = MAX_REMERAS - cantidadTotal() + l.cantidad;
+    l.cantidad = clamp(l.cantidad + delta, 0, libre);
+    if (delta > 0 && l.cantidad < 1) toast(`Para más de ${MAX_REMERAS} remeras escribinos por WhatsApp.`);
+    st.lineas = st.lineas.filter((x) => x.cantidad > 0);
+  }
   const modeloActual = () => catalogo.find((m) => m.id === st.modelo) || catalogo[0];
   const colorActual = () => (modeloActual().colores.find((c) => c.nombre === st.color) || modeloActual().colores[0]);
   const MAX_POR_LADO = 4;
@@ -213,7 +228,7 @@
       est.push({ side, d, n: i + 1, zona: nombreEstampa(side, d), ancho: d.w, alto: h, precio: precioEstampa(d.w, h) });
     }));
     const porPrenda = Number(m.precio || 0) + est.reduce((a, e) => a + e.precio, 0);
-    return { est, porPrenda, total: porPrenda * st.cantidad };
+    return { est, porPrenda, total: porPrenda * cantidadTotal() };
   }
 
   /* =========================================================
@@ -467,20 +482,42 @@
   function renderStep1() {
     const models = $('#models');
     models.innerHTML = catalogo.length > 1 ? catalogo.map((m) => `<button type="button" class="model-card" role="radio" aria-checked="${m.id === st.modelo}" data-id="${esc(m.id)}"><span><strong>${esc(m.nombre)}</strong></span><small>desde ${money(m.precio)}</small></button>`).join('') : '';
-    $$('.model-card', models).forEach((b) => b.addEventListener('click', () => { st.modelo = b.dataset.id; st.color = null; st.talle = null; renderStep1(); }));
+    $$('.model-card', models).forEach((b) => b.addEventListener('click', () => { st.modelo = b.dataset.id; st.color = null; st.lineas = []; renderStep1(); }));
     const m = modeloActual();
     if (!st.color || !m.colores.some((c) => c.nombre === st.color)) st.color = m.colores[0].nombre;
     const colors = $('#colors');
-    colors.innerHTML = m.colores.map((c) => `<button type="button" role="radio" aria-checked="${c.nombre === st.color}" aria-label="${esc(c.nombre)}" title="${esc(c.nombre)}" style="background:${c.hex}" data-c="${esc(c.nombre)}"></button>`).join('');
+    const porColor = (c) => st.lineas.filter((l) => l.color === c).reduce((a, l) => a + l.cantidad, 0);
+    colors.innerHTML = m.colores.map((c) => `<button type="button" role="radio" aria-checked="${c.nombre === st.color}" aria-label="${esc(c.nombre)}${porColor(c.nombre) ? `, ${porColor(c.nombre)} elegidas` : ''}" title="${esc(c.nombre)}" style="background:${c.hex}" data-c="${esc(c.nombre)}">${porColor(c.nombre) ? `<i>${porColor(c.nombre)}</i>` : ''}</button>`).join('');
     $$('button', colors).forEach((b) => b.addEventListener('click', () => { st.color = b.dataset.c; renderStep1(); }));
     $('#color-name').textContent = st.color;
     const sizes = $('#sizes');
-    sizes.innerHTML = m.talles.map((t) => `<button type="button" role="radio" aria-checked="${t === st.talle}" data-t="${esc(t)}">${esc(t)}</button>`).join('');
-    $$('button', sizes).forEach((b) => b.addEventListener('click', () => { st.talle = b.dataset.t; renderStep1(); }));
-    $('#qty').value = st.cantidad;
+    const cant = (t) => (st.lineas.find((l) => l.color === st.color && l.talle === t) || {}).cantidad || 0;
+    sizes.innerHTML = m.talles.map((t) => `<button type="button" class="${cant(t) ? 'has-qty' : ''}" data-t="${esc(t)}" aria-label="Sumar una remera ${esc(st.color)} talle ${esc(t)}${cant(t) ? ` (van ${cant(t)})` : ''}">${esc(t)}${cant(t) ? `<i aria-hidden="true">${cant(t)}</i>` : ''}</button>`).join('');
+    $$('button', sizes).forEach((b) => b.addEventListener('click', () => { sumarRemera(st.color, b.dataset.t, 1); renderStep1(); $(`#sizes button[data-t="${CSS.escape(b.dataset.t)}"]`)?.focus(); }));
+    renderLineas();
     renderVistas();
     foto('espalda');
     redraw();
+  }
+
+  /* Lista de remeras elegidas con su cantidad */
+  function renderLineas() {
+    const m = modeloActual();
+    const ls = lineasOrdenadas();
+    $('#lineas').hidden = !ls.length;
+    const n = cantidadTotal();
+    $('#lineas-total').textContent = n ? `· ${n} ${n === 1 ? 'remera' : 'remeras'}` : '';
+    $('#lineas-list').innerHTML = ls.map((l, i) => {
+      const hex = (m.colores.find((c) => c.nombre === l.color) || {}).hex || '#ccc';
+      return `<li data-i="${i}"><span><i style="background:${hex}"></i>${esc(l.color)} · talle ${esc(l.talle)}</span>
+        <div class="qty"><button type="button" data-d="-1" aria-label="Una menos de ${esc(l.color)} talle ${esc(l.talle)}">${l.cantidad === 1 ? '🗑' : '−'}</button><input type="number" min="0" max="${MAX_REMERAS}" value="${l.cantidad}" inputmode="numeric" aria-label="Cantidad ${esc(l.color)} talle ${esc(l.talle)}"><button type="button" data-d="1" aria-label="Una más de ${esc(l.color)} talle ${esc(l.talle)}">+</button></div></li>`;
+    }).join('');
+    $$('#lineas-list li').forEach((li) => {
+      const l = ls[Number(li.dataset.i)];
+      $$('button', li).forEach((b) => b.addEventListener('click', () => { sumarRemera(l.color, l.talle, Number(b.dataset.d)); renderStep1(); }));
+      $('input', li).addEventListener('change', (e) => { sumarRemera(l.color, l.talle, Math.round(Number(e.target.value) || 0) - l.cantidad); renderStep1(); });
+    });
+    updatePrice();
   }
 
   /* =========================================================
@@ -846,11 +883,12 @@
       });
     });
     $('#summary').innerHTML = `
-      <div><dt>${esc(m.nombre)} · ${esc(st.color)} · talle ${esc(st.talle)}</dt><dd>${money(m.precio)}</dd></div>
+      ${lineasOrdenadas().map((l) => `<div><dt>${l.cantidad} × ${esc(m.nombre)} · ${esc(l.color)} · talle ${esc(l.talle)}</dt><dd></dd></div>`).join('')}
+      <div><dt>Remera lisa</dt><dd>${money(m.precio)}</dd></div>
       ${t.est.map((e) => `<div><dt>Estampa ${e.zona.toLowerCase()} ${cmTxt(e.ancho)} × ${cmTxt(e.alto)} cm</dt><dd>${money(e.precio)}</dd></div>`).join('')}
       <hr>
       <div><dt>Por remera</dt><dd>${money(t.porPrenda)}</dd></div>
-      <div><dt>Cantidad</dt><dd>× ${st.cantidad}</dd></div>
+      <div><dt>Cantidad</dt><dd>× ${cantidadTotal()}</dd></div>
       <div class="profit"><dt><b>Total</b></dt><dd>${money(t.total)}</dd></div>
       ${senaMonto(t.total) ? `<div class="sena-row"><dt>Seña para confirmar</dt><dd>${money(senaMonto(t.total))}</dd></div>
       <div><dt>Resto al retirar</dt><dd>${money(t.total - senaMonto(t.total))}</dd></div>` : ''}`;
@@ -891,10 +929,11 @@
         id, origen: 'tienda', estado: 'sena', fecha: new Date().toISOString(),
         cliente: name.slice(0, 80), telefono: tel, notas: $('#o-notes').value.trim().slice(0, 600), total: t.total,
         sena: senaMonto(t.total), sena_pagada: false,
-        items: [{
-          modelo_id: modeloActual().id, color: st.color, talle: st.talle, cantidad: st.cantidad,
+        // Un renglón por color y talle; todas llevan las mismas estampas
+        items: lineasOrdenadas().map((l) => ({
+          modelo_id: modeloActual().id, color: l.color, talle: l.talle, cantidad: l.cantidad,
           estampas: t.est.map((e) => ({ zona: e.zona, ancho: Math.round(e.ancho * 10) / 10, alto: Math.round(e.alto * 10) / 10, cantidad: 1, precio: e.precio, x: Math.round(e.d.x * 10) / 10, y: Math.round(e.d.y * 10) / 10 })),
-        }],
+        })),
         imagenes: [], stock_descontado: false,
       };
       if (modo === 'nube') {
@@ -955,8 +994,8 @@
 
   function resumenTexto(p) {
     const it = p.items[0];
-    const lines = [`¡Hola! Hice un pedido en la tienda (código ${p.id.slice(-6).toUpperCase()}):`,
-      `• ${it.cantidad} × ${modeloActual().nombre} ${it.color}, talle ${it.talle}`];
+    const lines = [`¡Hola! Hice un pedido en la tienda (código ${p.id.slice(-6).toUpperCase()}):`];
+    p.items.forEach((x) => lines.push(`• ${x.cantidad} × ${modeloActual().nombre} ${x.color}, talle ${x.talle}`));
     it.estampas.forEach((e) => lines.push(`• Estampa ${e.zona.toLowerCase()} ${cmTxt(e.ancho)} × ${cmTxt(e.alto)} cm`));
     lines.push(`Total: ${money(p.total)}`);
     if (p.sena) lines.push(`Te mando el comprobante de la seña de ${money(p.sena)}.`);
@@ -1039,14 +1078,15 @@
   function updatePrice() {
     const t = totales();
     $('#buy-total').textContent = money(t.total);
-    const parts = [`${st.cantidad} ${st.cantidad === 1 ? 'remera' : 'remeras'}`];
+    const n = cantidadTotal();
+    const parts = [`${n} ${n === 1 ? 'remera' : 'remeras'}`];
     if (t.est.length) parts.push(`${t.est.length} ${t.est.length === 1 ? 'estampa' : 'estampas'}`);
     $('#buy-detail').textContent = parts.join(' + ');
   }
 
   function next() {
     if (st.step === 1) {
-      if (!st.talle) { toast('Elegí tu talle para seguir.'); $('#sizes button')?.focus(); return; }
+      if (!cantidadTotal()) { toast('Tocá tu talle para sumar la remera.'); $('#sizes button')?.focus(); return; }
       goStep(2);
     } else if (st.step === 2) {
       if (!LADOS.some(hayEn)) { toast('Subí al menos una imagen para estampar.'); return; }
@@ -1082,9 +1122,6 @@
     else if (CFG.instagram) contact.href = `https://www.instagram.com/${CFG.instagram}`;
     else contact.hidden = true;
 
-    $('#qty-minus').addEventListener('click', () => { st.cantidad = Math.max(1, st.cantidad - 1); $('#qty').value = st.cantidad; updatePrice(); });
-    $('#qty-plus').addEventListener('click', () => { st.cantidad = Math.min(200, st.cantidad + 1); $('#qty').value = st.cantidad; updatePrice(); });
-    $('#qty').addEventListener('change', (e) => { st.cantidad = clamp(Math.round(Number(e.target.value) || 1), 1, 200); e.target.value = st.cantidad; updatePrice(); });
 
     $$('.side-tabs button').forEach((b) => b.addEventListener('click', () => { st.side = b.dataset.side; renderStep2(); }));
     $('#upload-btn').addEventListener('click', () => { st.reemplazar = false; $('#file').click(); });

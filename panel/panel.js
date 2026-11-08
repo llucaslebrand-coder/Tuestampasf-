@@ -82,6 +82,7 @@
   const ICON = {
     home: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    cart: '<path d="M3 4h2l2.4 11h11l2-8H6.3"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
     orders: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     stock: '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5" opacity=".5"/>',
     barcode: '<path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/>',
@@ -351,6 +352,7 @@
     { id: 'pedidos', label: 'Pedidos', sub: 'Clientes y producción', icon: 'orders', render: renderPedidos },
     { id: 'resultados', label: 'Resultados', sub: 'Ventas y ganancia', icon: 'chart', render: renderResultados },
     { id: 'stock', label: 'Stock', sub: 'Remeras lisas por talle', icon: 'stock', render: renderStock },
+    { id: 'reponer', label: 'Reponer', sub: 'Lo que hay que comprar', icon: 'cart', render: renderReponer },
     { id: 'etiquetas', label: 'Códigos de barra', sub: 'Etiquetas para imprimir', icon: 'barcode', render: renderEtiquetas },
     { id: 'cotizador', label: 'Cotizador', sub: 'DTF por cm²', icon: 'quote', render: renderCotizador },
     { id: 'modelos', label: 'Modelos y precios', sub: 'Colores, talles y costos', icon: 'shirt', render: renderModelos },
@@ -365,6 +367,7 @@
         <b aria-hidden="true">${svg(v.icon)}</b>
         <span><strong>${v.label}</strong><small>${v.sub}</small></span>
         ${v.id === 'pedidos' && pedidosActivos().filter((p) => p.estado === 'nuevo').length ? `<i class="tool-ai-badge">${pedidosActivos().filter((p) => p.estado === 'nuevo').length}</i>` : ''}
+        ${v.id === 'reponer' && faltantes().filter((r) => r.faltan > 0).length ? `<i class="tool-ai-badge">${faltantes().filter((r) => r.faltan > 0).length}</i>` : ''}
       </a>`).join('');
   }
 
@@ -403,11 +406,130 @@
   }
   const bajoMinimo = () => Store.data.variantes.filter((v) => v.stock <= v.minimo);
 
+  /* =========================================================
+     REPONER: remeras que piden los clientes y no hay en stock.
+     Cuenta los pedidos que todavía no descontaron stock (los que ya
+     descontaron dejan el stock en negativo si no alcanzaba).
+     ========================================================= */
+  function faltantes() {
+    const filas = new Map();
+    const fila = (modelo_id, color, talle) => {
+      const k = `${modelo_id}|${color}|${talle}`;
+      if (!filas.has(k)) {
+        const v = Store.data.variantes.find((x) => x.modelo_id === modelo_id && x.color === color && x.talle === talle) || null;
+        filas.set(k, { modelo_id, color, talle, v, stock: v ? v.stock : 0, piden: 0, espera: 0, pedidos: [] });
+      }
+      return filas.get(k);
+    };
+    for (const p of Store.data.pedidos) {
+      if (p.stock_descontado || ['entregado', 'cancelado'].includes(p.estado)) continue;
+      const enEspera = p.estado === 'sena' && !p.sena_pagada;   // todavía no pagaron la seña
+      for (const it of p.items || []) {
+        if (it.tipo === 'dtf' || !it.color) continue;
+        const f = fila(it.modelo_id, it.color, it.talle);
+        const n = Number(it.cantidad) || 1;
+        if (enEspera) f.espera += n; else { f.piden += n; if (!f.pedidos.includes(p)) f.pedidos.push(p); }
+      }
+    }
+    // Pedidos ya en producción que dejaron el stock en negativo
+    Store.data.variantes.filter((v) => v.stock < 0).forEach((v) => fila(v.modelo_id, v.color, v.talle));
+    const disp = (f) => Math.max(0, f.stock);
+    return [...filas.values()].map((f) => ({
+      ...f,
+      faltan: Math.max(0, f.piden - f.stock),
+      faltanEspera: Math.max(0, f.piden + f.espera - f.stock) - Math.max(0, f.piden - f.stock),
+      despues: disp(f) - f.piden,
+    })).filter((f) => f.faltan > 0 || f.faltanEspera > 0);
+  }
+  const ordenVar = (a, b) => {
+    const m = modeloDe(a.modelo_id) || { colores: [], talles: [] };
+    return String(a.modelo_id).localeCompare(String(b.modelo_id))
+      || m.colores.findIndex((c) => c.nombre === a.color) - m.colores.findIndex((c) => c.nombre === b.color)
+      || m.talles.indexOf(a.talle) - m.talles.indexOf(b.talle);
+  };
+  const remeraTxt = (r) => `${(modeloDe(r.modelo_id) || {}).nombre || 'Remera'} ${r.color} T${r.talle}`;
+  /* Texto para mandarle al proveedor: agrupado por modelo y color */
+  function listaProveedor(items) {
+    const grupos = new Map();
+    items.filter((x) => x.cant > 0).sort(ordenVar).forEach((x) => {
+      const k = `${(modeloDe(x.modelo_id) || {}).nombre || 'Remera'} ${x.color}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(`T${x.talle} ×${x.cant}`);
+    });
+    const total = items.reduce((a, x) => a + x.cant, 0);
+    return [`Pedido de remeras · Tu Estampa SF · ${fmtDate(new Date())}`, ...[...grupos].map(([k, ts]) => `• ${k}: ${ts.join(', ')}`), `Total: ${total} ${total === 1 ? 'remera' : 'remeras'}`].join('\n');
+  }
+
+  let reponerConMinimo = false;
+  function renderReponer(el) {
+    const falt = faltantes().sort(ordenVar);
+    const urg = falt.filter((r) => r.faltan > 0);
+    const espera = falt.filter((r) => r.faltanEspera > 0);
+    const enFaltantes = new Set(urg.map((r) => r.v && r.v.id));
+    const bajos = Store.data.variantes.filter((v) => v.stock < v.minimo && !enFaltantes.has(v.id)).sort(ordenVar);
+    const aPedir = [
+      ...urg.map((r) => ({ modelo_id: r.modelo_id, color: r.color, talle: r.talle, cant: r.faltan })),
+      ...(reponerConMinimo ? bajos.map((v) => ({ modelo_id: v.modelo_id, color: v.color, talle: v.talle, cant: v.minimo - Math.max(0, v.stock) })) : []),
+    ];
+    const totalFaltan = urg.reduce((a, r) => a + r.faltan, 0);
+    const dot = (r) => `<span class="color-name"><i style="background:${colorDe(modeloDe(r.modelo_id), r.color).hex}"></i>${esc(remeraTxt(r))}</span>`;
+    el.innerHTML = head('Reponer stock', 'Las remeras que te pidieron los clientes y no tenés, para comprarle al proveedor. Se actualiza solo con cada pedido.', `
+        <button type="button" class="panel-btn" data-act="csv" ${aPedir.length ? '' : 'disabled'}>↓ Excel (CSV)</button>
+        <button type="button" class="panel-btn primary" data-act="copy" ${aPedir.length ? '' : 'disabled'}>⧉ Copiar lista para el proveedor</button>`) + `
+      <div class="stats">
+        <div class="stat ${totalFaltan ? 'is-alert' : ''}"><small>Faltan para pedidos</small><strong>${totalFaltan}</strong><span>${urg.length} ${urg.length === 1 ? 'combinación' : 'combinaciones'} de color y talle</span></div>
+        <div class="stat"><small>Si pagan la seña</small><strong>${espera.reduce((a, r) => a + r.faltanEspera, 0)}</strong><span>faltarían además</span></div>
+        <div class="stat"><small>Debajo del mínimo</small><strong>${bajos.length}</strong><span>sin contar las de arriba</span></div>
+      </div>
+      <section class="box"><h2>🛒 Faltan para pedidos de clientes</h2>${urg.length ? `
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Remera</th><th class="num">Piden</th><th class="num">Stock</th><th class="num">Faltan</th><th>Pedidos</th><th></th></tr></thead><tbody>
+        ${urg.map((r, i) => `<tr><td>${dot(r)}</td><td class="num">${r.piden}</td><td class="num">${r.stock}</td><td class="num"><b>${r.faltan}</b></td>
+          <td style="white-space:normal">${r.pedidos.map((p) => `<a href="#" data-ped="${p.id}">#${p.numero || '–'} ${esc(p.cliente)}</a>`).join(', ') || '<span class="field-help">Ya en producción</span>'}</td>
+          <td>${r.v ? `<button type="button" class="panel-btn" data-llego="${i}">✓ Llegó</button>` : '<span class="field-help">Sin código: agregá el color o talle en Modelos</span>'}</td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="empty">Tenés stock para todos los pedidos. ✓</p>'}
+      </section>
+      ${espera.length ? `<section class="box"><h2>⏳ Si pagan la seña</h2><p>Pedidos de la tienda que todavía no pagaron. Si los confirman, también faltarían:</p>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Remera</th><th class="num">Faltarían</th></tr></thead><tbody>
+        ${espera.map((r) => `<tr><td>${dot(r)}</td><td class="num">${r.faltanEspera}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+      <section class="box"><details ${bajos.length && !urg.length ? 'open' : ''}><summary><h2 style="display:inline">📉 Debajo del stock mínimo (${bajos.length})</h2></summary>
+        ${bajos.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Remera</th><th class="num">Stock</th><th class="num">Mín.</th><th class="num">Para llegar</th></tr></thead><tbody>
+        ${bajos.map((v) => `<tr><td>${dot(v)}</td><td class="num">${v.stock}</td><td class="num">${v.minimo}</td><td class="num">${v.minimo - Math.max(0, v.stock)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nada debajo del mínimo. ✓</p>'}
+      </details>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="rp-min" ${reponerConMinimo ? 'checked' : ''}> Sumar a la lista del proveedor lo que falta para llegar al mínimo</label></section>
+      ${aPedir.length ? `<section class="box"><h2>Lista para el proveedor</h2><pre class="panel-note" style="white-space:pre-wrap;font:inherit">${esc(listaProveedor(aPedir))}</pre></section>` : ''}`;
+    $('#rp-min', el).addEventListener('change', (e) => { reponerConMinimo = e.target.checked; refresh(); });
+    $$('[data-ped]', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); pedidoDetalle(a.dataset.ped); }));
+    $$('[data-llego]', el).forEach((b) => b.addEventListener('click', async () => {
+      const r = urg[Number(b.dataset.llego)];
+      const q = Math.round(Number(prompt(`¿Cuántas ${remeraTxt(r)} llegaron?`, String(r.faltan))) || 0);
+      if (q <= 0) return;
+      await changeStock(r.v, q, 'Ingreso de mercadería', 'Reposición para pedidos');
+      toast(`＋${q} ${remeraTxt(r)} cargadas al stock.`);
+      refresh();
+    }));
+    const copiar = el.querySelector('[data-act="copy"]');
+    copiar.addEventListener('click', async () => {
+      const t = listaProveedor(aPedir);
+      try { await navigator.clipboard.writeText(t); toast('Lista copiada: pegala en el WhatsApp del proveedor.'); } catch (e) { prompt('Copiá la lista:', t); }
+    });
+    el.querySelector('[data-act="csv"]').addEventListener('click', () => {
+      const filas = [['Modelo', 'Color', 'Talle', 'Cantidad a pedir', 'Stock actual', 'Pedidos']];
+      aPedir.slice().sort(ordenVar).forEach((x) => {
+        const r = urg.find((u) => u.modelo_id === x.modelo_id && u.color === x.color && u.talle === x.talle);
+        const v = Store.data.variantes.find((y) => y.modelo_id === x.modelo_id && y.color === x.color && y.talle === x.talle);
+        filas.push([(modeloDe(x.modelo_id) || {}).nombre || '', x.color, x.talle, x.cant, v ? v.stock : 0, r ? r.pedidos.map((p) => `#${p.numero || ''} ${p.cliente}`).join(' / ') : 'Stock mínimo']);
+      });
+      const csv = '\ufeff' + filas.map((f) => f.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `reponer-${new Date().toISOString().slice(0, 10)}.csv`);
+    });
+  }
+
   function renderInicio(el) {
     const vars = Store.data.variantes;
     const unidades = vars.reduce((a, v) => a + Math.max(0, v.stock), 0);
     const valor = vars.reduce((a, v) => a + Math.max(0, v.stock) * ((modeloDe(v.modelo_id) || {}).costo || 0), 0);
     const bajos = bajoMinimo().sort((a, b) => a.stock - b.stock);
+    const faltan = faltantes().reduce((a, r) => a + r.faltan, 0);
     const activos = pedidosActivos();
     const recientes = Store.data.pedidos.slice().sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 6);
     const mes = new Date().getMonth();
@@ -420,13 +542,17 @@
         <div class="stat"><small>Pedidos activos</small><strong>${activos.length}</strong><span>${activos.filter((p) => p.estado === 'nuevo').length} nuevos · ${esperandoSena().length} esperando seña</span></div>
         <div class="stat"><small>Remeras en stock</small><strong>${unidades}</strong><span>${vars.length} combinaciones</span></div>
         <div class="stat"><small>Valor del stock</small><strong>${money(valor)}</strong><span>a precio de costo</span></div>
-        <div class="stat ${bajos.length ? 'is-alert' : ''}"><small>Para reponer</small><strong>${bajos.length}</strong><span>en el mínimo o debajo</span></div>
+        <a class="stat ${faltan || bajos.length ? 'is-alert' : ''}" href="#reponer" style="color:inherit;text-decoration:none"><small>Para reponer</small><strong>${faltan}</strong><span>${faltan ? `faltan para pedidos · ` : ''}${bajos.length} en el mínimo o debajo · ver lista</span></a>
       </div>
       <div class="grid-2">
-        <section class="box"><h2>Para reponer</h2>${bajos.length ? `
+        <section class="box">${faltan ? `<h2>🛒 Faltan para pedidos</h2>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Remera</th><th class="num">Stock</th><th class="num">Faltan</th></tr></thead><tbody>
+          ${faltantes().filter((r) => r.faltan > 0).sort(ordenVar).slice(0, 8).map((r) => `<tr><td><span class="color-name"><i style="background:${colorDe(modeloDe(r.modelo_id), r.color).hex}"></i>${esc(r.color)} · T${esc(r.talle)}</span></td><td class="num">${r.stock}</td><td class="num"><b>${r.faltan}</b></td></tr>`).join('')}
+          </tbody></table></div><p><a href="#reponer">Ver la lista para el proveedor</a></p><h2 style="margin-top:14px">Debajo del mínimo</h2>` : '<h2>Para reponer</h2>'}${bajos.length ? `
           <div class="table-wrap"><table class="tbl"><thead><tr><th>Remera</th><th class="num">Stock</th><th class="num">Mín.</th></tr></thead><tbody>
-          ${bajos.slice(0, 12).map((v) => `<tr><td><span class="color-name"><i style="background:${colorDe(modeloDe(v.modelo_id), v.color).hex}"></i>${esc(v.color)} · T${esc(v.talle)}</span></td><td class="num">${v.stock}</td><td class="num">${v.minimo}</td></tr>`).join('')}
-          </tbody></table></div>${bajos.length > 12 ? `<p>Y ${bajos.length - 12} más. <a href="#stock">Ver stock</a></p>` : ''}` : '<p class="empty">Todo el stock está por encima del mínimo. ✓</p>'}
+          ${bajos.slice(0, faltan ? 5 : 12).map((v) => `<tr><td><span class="color-name"><i style="background:${colorDe(modeloDe(v.modelo_id), v.color).hex}"></i>${esc(v.color)} · T${esc(v.talle)}</span></td><td class="num">${v.stock}</td><td class="num">${v.minimo}</td></tr>`).join('')}
+          </tbody></table></div>${bajos.length > (faltan ? 5 : 12) ? `<p>Y ${bajos.length - (faltan ? 5 : 12)} más. <a href="#stock">Ver stock</a></p>` : ''}` : '<p class="empty">Todo el stock está por encima del mínimo. ✓</p>'}
+
         </section>
         <section class="box"><h2>Últimos pedidos</h2>${recientes.length ? `
           <div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Cliente</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
@@ -495,9 +621,7 @@
         <label class="field"><span class="field-label">Cliente</span><input type="text" id="pf-cli" required maxlength="80" value="${esc(pref.cliente || '')}"></label>
         <label class="field"><span class="field-label">WhatsApp</span><input type="tel" id="pf-tel" placeholder="Ej.: 3424 123456" value="${esc(pref.telefono || '')}"></label>
         <label class="field"><span class="field-label">Modelo</span><select id="pf-mod">${modelos.map((m) => `<option value="${m.id}" ${m === m0 ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
-        <label class="field"><span class="field-label">Cantidad</span><input type="number" id="pf-cant" min="1" value="${pref.cantidad || 1}"></label>
-        <label class="field"><span class="field-label">Color</span><select id="pf-col"></select></label>
-        <label class="field"><span class="field-label">Talle</span><select id="pf-tal"></select></label>
+        <div class="field full"><span class="field-label">Remeras (mismo diseño para todas)</span><div id="pf-lin"></div><button type="button" class="panel-btn" id="pf-lin-add">＋ Otro talle o color</button></div>
         <div class="field full"><span class="field-label">Estampas</span><div id="pf-est"></div><button type="button" class="panel-btn" id="pf-add">＋ Agregar estampa</button></div>
         <label class="field"><span class="field-label">Total ($)</span><input type="number" id="pf-total" min="0" step="1" value="${Math.round(pref.total || 0)}"></label>
         <label class="field"><span class="field-label">Estado</span><select id="pf-est-sel">${ESTADOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
@@ -506,20 +630,40 @@
         <p class="field-help full" id="pf-stock"></p>
       </form>
       <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pf-ok">Guardar pedido</button></div>`, (body) => {
-      const mod = $('#pf-mod', body), col = $('#pf-col', body), tal = $('#pf-tal', body);
-      const fill = () => {
+      const mod = $('#pf-mod', body);
+      // Renglones de remeras: color, talle y cantidad (todas con las mismas estampas)
+      const m0x = modeloDe(mod.value);
+      const lineas = [{ color: pref.color || m0x.colores[0].nombre, talle: pref.talle || m0x.talles[0], cantidad: pref.cantidad || 1 }];
+      const linBox = $('#pf-lin', body);
+      const drawLin = () => {
         const m = modeloDe(mod.value);
-        col.innerHTML = m.colores.map((c) => `<option ${c.nombre === pref.color ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
-        tal.innerHTML = m.talles.map((t) => `<option ${t === pref.talle ? 'selected' : ''}>${esc(t)}</option>`).join('');
+        lineas.forEach((l) => {
+          if (!m.colores.some((c) => c.nombre === l.color)) l.color = m.colores[0].nombre;
+          if (!m.talles.includes(l.talle)) l.talle = m.talles[0];
+        });
+        linBox.innerHTML = lineas.map((l, i) => `<div class="stamp-row" data-i="${i}">
+          <label>Color<select data-k="color">${m.colores.map((c) => `<option ${c.nombre === l.color ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
+          <label>Talle<select data-k="talle">${m.talles.map((t) => `<option ${t === l.talle ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+          <label>Cantidad<input type="number" data-k="cantidad" min="1" value="${l.cantidad}"></label>
+          ${lineas.length > 1 ? '<button type="button" class="icon-btn danger" aria-label="Quitar renglón">✕</button>' : ''}</div>`).join('');
+        $$('.stamp-row', linBox).forEach((r) => {
+          const i = Number(r.dataset.i);
+          $$('[data-k]', r).forEach((inp) => inp.addEventListener('change', () => { lineas[i][inp.dataset.k] = inp.dataset.k === 'cantidad' ? Math.max(1, Math.round(Number(inp.value) || 1)) : inp.value; showStock(); }));
+          const x = r.querySelector('button');
+          if (x) x.addEventListener('click', () => { lineas.splice(i, 1); drawLin(); });
+        });
         showStock();
       };
       const showStock = () => {
-        const v = Store.data.variantes.find((x) => x.modelo_id === mod.value && x.color === col.value && x.talle === tal.value);
-        $('#pf-stock', body).textContent = v ? `Stock de esa remera: ${v.stock} unidades.${v.stock < Number($('#pf-cant', body).value) ? ' ⚠ No alcanza: quedaría para producir.' : ''}` : '';
+        const txt = lineas.map((l) => {
+          const v = Store.data.variantes.find((x) => x.modelo_id === mod.value && x.color === l.color && x.talle === l.talle);
+          return v ? `${l.color} T${l.talle}: ${v.stock} en stock${v.stock < l.cantidad ? ' ⚠ no alcanza' : ''}` : '';
+        }).filter(Boolean);
+        $('#pf-stock', body).textContent = txt.length ? `Stock: ${txt.join(' · ')}.` : '';
       };
-      [mod].forEach((s) => s.addEventListener('change', fill));
-      [col, tal, $('#pf-cant', body)].forEach((s) => s.addEventListener('change', showStock));
-      fill();
+      mod.addEventListener('change', drawLin);
+      $('#pf-lin-add', body).addEventListener('click', () => { const u = lineas[lineas.length - 1]; lineas.push({ color: u.color, talle: u.talle, cantidad: 1 }); drawLin(); });
+      drawLin();
       const estBox = $('#pf-est', body);
       const rows = est.map((e) => ({ ...e }));
       const drawEst = () => {
@@ -550,7 +694,7 @@
           const p = {
             id: uid(), fecha: new Date().toISOString(), origen: 'panel', cliente,
             telefono: $('#pf-tel', body).value.trim(),
-            items: [{ modelo_id: mod.value, color: col.value, talle: tal.value, cantidad: Number($('#pf-cant', body).value) || 1, estampas: rows }],
+            items: lineas.map((l) => ({ modelo_id: mod.value, color: l.color, talle: l.talle, cantidad: l.cantidad, estampas: rows.map((e) => ({ ...e })) })),
             total: Number($('#pf-total', body).value) || 0,
             estado: $('#pf-est-sel', body).value, imagenes: imgs, notas: $('#pf-notas', body).value.trim(), stock_descontado: false,
           };
@@ -772,6 +916,11 @@
     openModal(`Pedido #${p.numero || '–'} · ${p.cliente}`, `
       <p><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span> · ${fmtDateTime(p.fecha)} · ${p.origen === 'tienda' ? 'Tienda online' : 'Cargado en el panel'}</p>
       <ul class="order-items">${itemsResumen(p).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+      ${(() => {
+        if (p.stock_descontado || ['entregado', 'cancelado'].includes(p.estado)) return '';
+        const sinStock = faltantes().filter((r) => r.faltan > 0 && r.pedidos.includes(p));
+        return sinStock.length ? `<p class="sena-line">⚠ No hay stock suficiente de: ${sinStock.map((r) => `<b>${esc(r.color)} T${esc(r.talle)}</b> (faltan ${r.faltan})`).join(', ')}. <a href="#reponer" data-close>Ver lista para reponer</a></p>` : '';
+      })()}
       <p><b>Total: ${money(p.total)}</b>${p.telefono ? ` · WhatsApp: ${esc(p.telefono)}` : ''}</p>
       ${p.pago && p.pago.proveedor === 'mercadopago' ? `<p class="sena-line is-ok">✓ Pagado con <b>Mercado Pago</b>: ${money(p.pago.monto)}${p.pago.recargo ? ` (incluye ${money(p.pago.recargo)} de costo de Mercado Pago)` : ''}${p.pago.metodo ? ` · ${esc(p.pago.metodo)}` : ''} el ${fmtDateTime(p.pago.fecha)} · operación ${esc(p.pago.id)}</p>` : ''}
       ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}

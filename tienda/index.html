@@ -87,12 +87,12 @@
           <h2 class="opt-title">Color <span id="color-name"></span></h2>
           <div class="colors" id="colors" role="radiogroup" aria-label="Color de la remera"></div>
           <h2 class="opt-title">Talle</h2>
-          <div class="sizes" id="sizes" role="radiogroup" aria-label="Talle"></div>
-          <h2 class="opt-title">Cantidad</h2>
-          <div class="qty">
-            <button type="button" id="qty-minus" aria-label="Una menos">−</button>
-            <input type="number" id="qty" min="1" max="200" value="1" inputmode="numeric" aria-label="Cantidad de remeras">
-            <button type="button" id="qty-plus" aria-label="Una más">+</button>
+          <p class="field-help sizes-help">Tocá tu talle. ¿Son varias? Tocá cada talle las veces que quieras, y si van de otro color, elegí el color y sumá sus talles. Todas llevan el mismo diseño.</p>
+          <div class="sizes" id="sizes" role="group" aria-label="Sumar remeras por talle"></div>
+          <!-- Remeras elegidas (color, talle y cantidad) -->
+          <div class="lineas" id="lineas" hidden>
+            <h2 class="opt-title">Tu pedido <span id="lineas-total"></span></h2>
+            <ul id="lineas-list" aria-label="Remeras elegidas"></ul>
           </div>
         </div>
       </div>
