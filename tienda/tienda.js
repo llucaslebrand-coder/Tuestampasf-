@@ -220,6 +220,22 @@
   const actual = (side = st.side) => lista(side).find((d) => d.id === st.sel[side]) || lista(side)[lista(side).length - 1] || null;
   const nombreEstampa = (side, d) => (lista(side).length > 1 ? `${ZONAS[side].label} ${lista(side).indexOf(d) + 1}` : ZONAS[side].label);
 
+  /* Precio de la remera lisa según el talle (el panel puede cargar talles más caros) */
+  function precioTalle(m, talle) {
+    const p = Number((((cotizador.porTalle || {})[m.id]) || {})[talle]?.precio);
+    return p > 0 ? p : Number(m.precio || 0);
+  }
+  /* Talles con un precio distinto al del modelo, agrupados: "talles 6 al 10: $ 23.000" */
+  function avisoTalles(m) {
+    const grupos = [];
+    m.talles.forEach((t) => {
+      const p = precioTalle(m, t);
+      if (p === Number(m.precio || 0)) return;
+      const g = grupos[grupos.length - 1];
+      if (g && g.p === p && m.talles.indexOf(g.ts[g.ts.length - 1]) === m.talles.indexOf(t) - 1) g.ts.push(t); else grupos.push({ p, ts: [t] });
+    });
+    return grupos.map((g) => `${g.ts.length > 1 ? `talles ${g.ts[0]} al ${g.ts[g.ts.length - 1]}` : `talle ${g.ts[0]}`}: ${money(g.p)} la remera lisa`).join(' · ');
+  }
   function totales() {
     const m = modeloActual();
     const est = [];
@@ -227,8 +243,11 @@
       const h = d.w * d.img.height / d.img.width;
       est.push({ side, d, n: i + 1, zona: nombreEstampa(side, d), ancho: d.w, alto: h, precio: precioEstampa(d.w, h) });
     }));
-    const porPrenda = Number(m.precio || 0) + est.reduce((a, e) => a + e.precio, 0);
-    return { est, porPrenda, total: porPrenda * cantidadTotal() };
+    const estampas = est.reduce((a, e) => a + e.precio, 0);
+    const porPrenda = Number(m.precio || 0) + estampas;
+    // Cada remera con el precio de su talle + las estampas
+    const lineas = lineasOrdenadas().map((l) => ({ ...l, unit: precioTalle(m, l.talle) + estampas }));
+    return { est, estampas, porPrenda, lineas, total: lineas.reduce((a, l) => a + l.unit * l.cantidad, 0) };
   }
 
   /* =========================================================
@@ -494,6 +513,9 @@
     const cant = (t) => (st.lineas.find((l) => l.color === st.color && l.talle === t) || {}).cantidad || 0;
     sizes.innerHTML = m.talles.map((t) => `<button type="button" class="${cant(t) ? 'has-qty' : ''}" data-t="${esc(t)}" aria-label="Sumar una remera ${esc(st.color)} talle ${esc(t)}${cant(t) ? ` (van ${cant(t)})` : ''}">${esc(t)}${cant(t) ? `<i aria-hidden="true">${cant(t)}</i>` : ''}</button>`).join('');
     $$('button', sizes).forEach((b) => b.addEventListener('click', () => { sumarRemera(st.color, b.dataset.t, 1); renderStep1(); $(`#sizes button[data-t="${CSS.escape(b.dataset.t)}"]`)?.focus(); }));
+    const aviso = avisoTalles(m);
+    $('#sizes-precio').hidden = !aviso;
+    $('#sizes-precio').textContent = aviso ? `Precio de la remera según el talle — ${aviso}.` : '';
     renderLineas();
     renderVistas();
     foto('espalda');
@@ -883,12 +905,10 @@
       });
     });
     $('#summary').innerHTML = `
-      ${lineasOrdenadas().map((l) => `<div><dt>${l.cantidad} × ${esc(m.nombre)} · ${esc(l.color)} · talle ${esc(l.talle)}</dt><dd></dd></div>`).join('')}
-      <div><dt>Remera lisa</dt><dd>${money(m.precio)}</dd></div>
+      <div><dt><b>Cada remera lleva</b></dt><dd></dd></div>
       ${t.est.map((e) => `<div><dt>Estampa ${e.zona.toLowerCase()} ${cmTxt(e.ancho)} × ${cmTxt(e.alto)} cm</dt><dd>${money(e.precio)}</dd></div>`).join('')}
       <hr>
-      <div><dt>Por remera</dt><dd>${money(t.porPrenda)}</dd></div>
-      <div><dt>Cantidad</dt><dd>× ${cantidadTotal()}</dd></div>
+      ${t.lineas.map((l) => `<div><dt>${l.cantidad} × ${esc(m.nombre)} ${esc(l.color)} talle ${esc(l.talle)} <small>(${money(l.unit)} c/u)</small></dt><dd>${money(l.unit * l.cantidad)}</dd></div>`).join('')}
       <div class="profit"><dt><b>Total</b></dt><dd>${money(t.total)}</dd></div>
       ${senaMonto(t.total) ? `<div class="sena-row"><dt>Seña para confirmar</dt><dd>${money(senaMonto(t.total))}</dd></div>
       <div><dt>Resto al retirar</dt><dd>${money(t.total - senaMonto(t.total))}</dd></div>` : ''}`;

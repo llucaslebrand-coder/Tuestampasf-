@@ -293,3 +293,31 @@ a.tool-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px
 
 /* Que los adornos del encabezado no generen desplazamiento lateral en el celular */
 html, body { overflow-x: clip; }
+
+/* Precios por talle (Modelos) */
+.mf-talles summary { cursor: pointer; padding: 6px 0; }
+.mf-desde { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0 10px; font-size: 14px; }
+.mf-desde input, .mf-desde select { width: 96px; height: 36px; }
+.mf-talles .tbl input { width: 100%; min-width: 80px; height: 34px; }
+
+/* Pagos del pedido (seña + pagos parciales) */
+.cobros { display: grid; gap: 10px; margin: 12px 0; padding: 12px; border: 1px solid #e3e7ef; border-radius: 14px; background: #f8f9fc; }
+.cobros-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cobros-sum div { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: #fff; }
+.cobros-sum small { color: #5b6478; font-size: 12px; }
+.cobros-sum b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.cobros-sum .is-debe b { color: #b3261e; }
+.cobros-sum .is-ok b { color: #1e7a3c; }
+.cobros-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.cobros-list li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto 32px; gap: 8px; align-items: center; padding: 4px 2px; border-bottom: 1px solid #eceff5; }
+.cobros-list li span:first-child { color: #8a91a3; font-size: 12px; }
+.cobros-list b { font-variant-numeric: tabular-nums; }
+.cobro-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.cobro-form label { display: grid; gap: 3px; font-size: 12px; font-weight: 700; color: #5b6478; }
+.cobro-form input { height: 38px; }
+.cobro-form #pc-monto { width: 120px; }
+.cobro-form #pc-nota { width: min(220px, 60vw); }
+.tp-saldo { display: block; color: #b3261e; font-size: 12px; font-weight: 700; }
+.tp-saldo.is-ok { color: #1e7a3c; }
+@media (max-width: 640px) { .tbl-pedidos .tp-tot { text-align: right; } }
+.cobro-form button { flex: none; width: auto; height: 38px; }

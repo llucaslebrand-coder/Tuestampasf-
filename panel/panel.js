@@ -343,6 +343,24 @@
   const colorDe = (modelo, nombre) => (modelo && modelo.colores.find((c) => c.nombre === nombre)) || { nombre, hex: '#ccc', sigla: '?' };
   const varianteLabel = (v) => { const m = modeloDe(v.modelo_id); return `${m ? m.nombre : 'Remera'} · ${v.color} · Talle ${v.talle}`; };
   const cotizador = () => ({ ...COTIZADOR_INICIAL, ...(Store.data.config.cotizador || {}) });
+  /* Precio y costo por talle: si un talle tiene valores propios (Modelos y precios),
+     se usan esos; si no, los del modelo. Se guardan en la config "cotizador"
+     (porTalle) para que la tienda también los lea. */
+  const ajusteTalle = (m, t) => (((cotizador().porTalle || {})[m && m.id]) || {})[t] || {};
+  const precioTalle = (m, t) => (Number(ajusteTalle(m, t).precio) > 0 ? Number(ajusteTalle(m, t).precio) : Number((m || {}).precio) || 0);
+  /* Talles seguidos con el mismo costo y precio distintos al del modelo: [{ ts, costo, precio }] */
+  function gruposTalle(m) {
+    const gs = [];
+    (m.talles || []).forEach((t, i) => {
+      const costo = costoTalle(m, t), precio = precioTalle(m, t);
+      if (costo === Number(m.costo) && precio === Number(m.precio)) return;
+      const g = gs[gs.length - 1];
+      if (g && g.costo === costo && g.precio === precio && m.talles.indexOf(g.ts[g.ts.length - 1]) === i - 1) g.ts.push(t);
+      else gs.push({ ts: [t], costo, precio });
+    });
+    return gs;
+  }
+  const costoTalle = (m, t) => (Number(ajusteTalle(m, t).costo) > 0 ? Number(ajusteTalle(m, t).costo) : Number((m || {}).costo) || 0);
 
   /* =========================================================
      4. NAVEGACIÓN Y VISTAS
@@ -556,7 +574,7 @@
   function renderInicio(el) {
     const vars = Store.data.variantes;
     const unidades = vars.reduce((a, v) => a + Math.max(0, v.stock), 0);
-    const valor = vars.reduce((a, v) => a + Math.max(0, v.stock) * ((modeloDe(v.modelo_id) || {}).costo || 0), 0);
+    const valor = vars.reduce((a, v) => a + Math.max(0, v.stock) * costoTalle(modeloDe(v.modelo_id), v.talle), 0);
     const bajos = bajoMinimo().sort((a, b) => a.stock - b.stock);
     const faltan = faltantes().reduce((a, r) => a + r.faltan, 0);
     const activos = pedidosActivos();
@@ -630,7 +648,7 @@
         ${list.map((p) => `<tr data-id="${p.id}" style="cursor:pointer" tabindex="0">
           <td class="tp-num">#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td class="tp-fecha">${fmtDate(p.fecha)}</td>
           <td class="tp-cli">${esc(p.cliente)}</td><td class="tp-det" style="white-space:normal;max-width:320px">${esc(itemsResumen(p).join(' · '))}</td>
-          <td class="tp-est"><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num tp-tot">${money(p.total)}</td></tr>`).join('')}
+          <td class="tp-est"><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num tp-tot">${money(p.total)}${(() => { const c = cuentaPedido(p); return c.cobrado > 0 && c.saldo > 0 ? `<small class="tp-saldo">falta ${money(c.saldo)}</small>` : (c.cobrado > 0 && !c.saldo ? '<small class="tp-saldo is-ok">pagado</small>' : ''); })()}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="box"><p class="empty">No hay pedidos en esta lista.</p></div>'}`;
     el.querySelector('[data-act="new"]').addEventListener('click', () => pedidoForm());
     $$('.tabs button', el).forEach((b) => b.addEventListener('click', () => { pedidoFiltro = b.dataset.f; refresh(); }));
@@ -714,10 +732,16 @@
       let manual = Number(pref.total) > 0;   // desde el cotizador o al editar ya viene un total
       let calculado = 0;
       function recalc() {
-        const prendas = lineas.reduce((a, l) => a + (Number(l.cantidad) || 0), 0) || 1;
-        const r = calcular(cotizador(), { modelo_id: mod.value, prendas, base: null, diseno: false, estampas: rows });
-        calculado = Math.round(r.total);
-        $('#pf-calc', body).innerHTML = `Calculado: <b>${money(calculado)}</b> = ${prendas} ${prendas === 1 ? 'remera' : 'remeras'} × ${money(r.porPrenda)} (remera ${money(r.base)}${r.estPorPrenda ? ` + estampas ${money(r.estPorPrenda)}` : ''})`;
+        const m = modeloDe(mod.value);
+        const r = calcular(cotizador(), { modelo_id: mod.value, prendas: 1, base: 0, diseno: false, estampas: rows });
+        // Cada renglón con el precio de su talle (los talles grandes pueden costar más)
+        const partes = lineas.map((l) => ({ ...l, unit: precioTalle(m, l.talle) + r.estPorPrenda, cant: Number(l.cantidad) || 0 }));
+        const prendas = partes.reduce((a, l) => a + l.cant, 0);
+        calculado = Math.round(partes.reduce((a, l) => a + l.unit * l.cant, 0));
+        const unitarios = [...new Set(partes.map((l) => l.unit))];
+        $('#pf-calc', body).innerHTML = `Calculado: <b>${money(calculado)}</b> = ${unitarios.length === 1
+          ? `${prendas} ${prendas === 1 ? 'remera' : 'remeras'} × ${money(unitarios[0])} (remera ${money(partes[0] ? precioTalle(m, partes[0].talle) : m.precio)}${r.estPorPrenda ? ` + estampas ${money(r.estPorPrenda)}` : ''})`
+          : `${partes.map((l) => `${l.cant} × T${esc(l.talle)} ${money(l.unit)}`).join(' + ')}${r.estPorPrenda ? ` (incluye estampas ${money(r.estPorPrenda)} c/u)` : ''}`}`;
         if (!manual) totalInp.value = calculado;
         $('#pf-recalc', body).hidden = !manual || Number(totalInp.value) === calculado;
       }
@@ -852,7 +876,7 @@
       const m = modeloDe(it.modelo_id);
       const cant = Number(it.cantidad) || 1;
       unidades += cant;
-      remeras += (m ? Number(m.costo) || 0 : 0) * cant;
+      remeras += costoTalle(m, it.talle) * cant;
       (it.estampas || []).forEach((e) => { dtf += (Number(e.ancho) || 0) * (Number(e.alto) || 0) * costoCm2 * (Number(e.cantidad) || 1) * cant; });
     });
     return { remeras: Math.round(remeras), dtf: Math.round(dtf), total: Math.round(remeras + dtf), unidades };
@@ -993,8 +1017,32 @@
     if (p.estado === 'listo') return { estado: 'entregado', label: '✓ Entregado' };
     return null;
   }
+  /* =========================================================
+     COBROS: pagos parciales de un pedido (seña + pagos sueltos).
+     Se guardan en el historial del pedido como { tipo: 'cobro' }.
+     ========================================================= */
+  const cobrosDe = (p) => (p.historial || []).filter((h) => h.tipo === 'cobro');
+  function cuentaPedido(p) {
+    const total = Number(p.total) || 0;
+    const sena = p.sena_pagada ? Number(p.sena) || 0 : 0;
+    const pagos = cobrosDe(p).reduce((a, c) => a + (Number(c.monto) || 0), 0);
+    const cobrado = p.pago && p.pago.total ? Math.max(total, sena + pagos) : sena + pagos;
+    return { total, sena, pagos, cobrado, saldo: Math.max(0, total - cobrado) };
+  }
+  async function registrarCobro(id, monto, nota) {
+    const p = Store.data.pedidos.find((x) => x.id === id);
+    const cobro = { tipo: 'cobro', id: uid(), fecha: new Date().toISOString(), monto: Math.round(monto), nota: (nota || '').slice(0, 80) };
+    await Store.save('pedidos', { ...p, historial: [...(p.historial || []), cobro] });
+  }
+  async function borrarCobro(id, cobroId) {
+    const p = Store.data.pedidos.find((x) => x.id === id);
+    await Store.save('pedidos', { ...p, historial: (p.historial || []).filter((h) => h.id !== cobroId) });
+  }
+
   async function cambiarEstado(id, nuevo, extra = {}) {
     const prev = Store.data.pedidos.find((x) => x.id === id);
+    if (nuevo === 'entregado' && cuentaPedido({ ...prev, ...extra }).saldo > 0
+      && !confirm(`Al pedido #${prev.numero || ''} le falta cobrar ${money(cuentaPedido({ ...prev, ...extra }).saldo)}.\n¿Lo marcás como entregado igual?`)) return false;
     const ahora = new Date().toISOString();
     const historial = [...(prev.historial || []), { estado: nuevo, fecha: ahora }];
     const cierre = ['entregado', 'cancelado'].includes(nuevo)
@@ -1020,7 +1068,22 @@
       })()}
       <p><b>Total: ${money(p.total)}</b>${p.telefono ? ` · WhatsApp: ${esc(p.telefono)}` : ''}</p>
       ${p.pago && p.pago.proveedor === 'mercadopago' ? `<p class="sena-line is-ok">✓ Pagado con <b>Mercado Pago</b>: ${money(p.pago.monto)}${p.pago.recargo ? ` (incluye ${money(p.pago.recargo)} de costo de Mercado Pago)` : ''}${p.pago.metodo ? ` · ${esc(p.pago.metodo)}` : ''} el ${fmtDateTime(p.pago.fecha)} · operación ${esc(p.pago.id)}</p>` : ''}
-      ${p.sena ? `<p class="sena-line ${p.sena_pagada ? 'is-ok' : ''}">${p.sena_pagada ? '✓ Seña recibida' : '⏳ Seña pendiente'}: <b>${money(p.sena)}</b> · Resto: ${money(p.total - p.sena)}${!p.sena_pagada && p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
+      ${p.sena && !p.sena_pagada ? `<p class="sena-line">⏳ Seña pendiente: <b>${money(p.sena)}</b>${p.estado === 'sena' ? ` · Se borra el ${fmtDate(venceEl(p))} si no paga` : ''}</p>` : ''}
+      ${(() => {
+        const c = cuentaPedido(p);
+        return `<section class="cobros" aria-label="Pagos del pedido">
+          <div class="cobros-sum"><div><small>Total</small><b>${money(c.total)}</b></div><div><small>Cobrado</small><b>${money(c.cobrado)}</b></div><div class="${c.saldo ? 'is-debe' : 'is-ok'}"><small>${c.saldo ? 'Falta cobrar' : 'Pagado'}</small><b>${c.saldo ? money(c.saldo) : '✓'}</b></div></div>
+          ${c.sena || cobrosDe(p).length ? `<ul class="cobros-list">
+            ${c.sena ? `<li><span>${p.pago && p.pago.fecha ? fmtDate(p.pago.fecha) : ''}</span><span>Seña${p.pago && p.pago.proveedor === 'mercadopago' ? ' (Mercado Pago)' : ''}</span><b>${money(c.sena)}</b><i></i></li>` : ''}
+            ${cobrosDe(p).map((x) => `<li><span>${fmtDate(x.fecha)}</span><span>${esc(x.nota || 'Pago')}</span><b>${money(x.monto)}</b><button type="button" class="icon-btn danger" data-cobro="${x.id}" aria-label="Borrar este pago">✕</button></li>`).join('')}
+          </ul>` : ''}
+          ${p.estado !== 'cancelado' ? `<form class="cobro-form" id="pd-cobro" ${c.saldo ? '' : 'hidden'}>
+            <label>Monto $<input type="number" id="pc-monto" min="1" step="1" value="${c.saldo || ''}" required></label>
+            <label>Quién pagó o cómo <input type="text" id="pc-nota" maxlength="80" placeholder="Ej.: María, transferencia"></label>
+            <button type="submit" class="panel-btn primary">＋ Registrar pago</button>
+          </form>` : ''}
+        </section>`;
+      })()}
       ${p.estado !== 'cancelado' ? `<ol class="flujo" aria-label="Recorrido del pedido">${FLUJO.map(([k, l], i) => {
         const pos = p.estado === 'nuevo' || p.estado === 'confirmado' ? 0.5 : FLUJO.findIndex(([kk]) => kk === p.estado);
         const h = (p.historial || []).slice().reverse().find((x) => x.estado === k);
@@ -1046,6 +1109,24 @@
         pedidoDetalle(id);
       });
       $('#pd-edit', body).addEventListener('click', () => pedidoForm({}, id));
+      // Pagos parciales
+      const fc = $('#pd-cobro', body);
+      if (fc) fc.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const monto = Math.round(Number($('#pc-monto', body).value) || 0);
+        if (monto <= 0) { toast('Escribí el monto que te pagaron.', true); return; }
+        await registrarCobro(id, monto, $('#pc-nota', body).value.trim());
+        const c = cuentaPedido(Store.data.pedidos.find((x) => x.id === id));
+        toast(c.saldo ? `Pago de ${money(monto)} registrado. Falta cobrar ${money(c.saldo)}.` : `Pago registrado. ¡El pedido está pagado completo!`);
+        refresh();
+        pedidoDetalle(id);
+      });
+      $$('[data-cobro]', body).forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('¿Borrar este pago?')) return;
+        await borrarCobro(id, b.dataset.cobro);
+        refresh();
+        pedidoDetalle(id);
+      }));
       const lz = $('#pd-lienzo', body);
       if (lz) lz.addEventListener('click', () => { closeModal(); abrirLienzoPedido(Store.data.pedidos.find((x) => x.id === id)); });
       const nx = $('#pd-next', body);
@@ -1205,7 +1286,7 @@
     const rows = [['Modelo', 'Color', 'Talle', 'Código', 'Stock', 'Mínimo', 'Costo', 'Precio']];
     Store.data.variantes.forEach((v) => {
       const m = modeloDe(v.modelo_id) || {};
-      rows.push([m.nombre, v.color, v.talle, v.codigo, v.stock, v.minimo, m.costo, m.precio]);
+      rows.push([m.nombre, v.color, v.talle, v.codigo, v.stock, v.minimo, costoTalle(m, v.talle), precioTalle(m, v.talle)]);
     });
     const csv = '﻿' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
     downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `stock-tuestampa-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -1826,6 +1907,7 @@
           </dl>
           <p class="chip-list" style="margin:10px 0">${m.colores.map((c) => `<span class="color-name" style="font-size:12px"><i style="background:${c.hex}"></i>${esc(c.nombre)}</span>`).join(' ')}</p>
           <p class="field-help">Talles: ${m.talles.map(esc).join(', ')}</p>
+          ${gruposTalle(m).length ? `<dl class="breakdown" style="margin-top:8px">${gruposTalle(m).map((g) => `<div><dt>${g.ts.length > 1 ? `Talles ${esc(g.ts[0])} al ${esc(g.ts[g.ts.length - 1])}` : `Talle ${esc(g.ts[0])}`}</dt><dd>costo ${money(g.costo)} · venta ${money(g.precio)}</dd></div>`).join('')}</dl>` : ''}
           <div class="row-actions"><button type="button" class="panel-btn" data-edit="${m.id}">Editar</button></div>
         </section>`;
       }).join('')}</div>`;
@@ -1844,6 +1926,12 @@
         <label class="field"><span class="field-label">Precio base de venta ($)</span><input type="number" id="mf-pre" min="0" step="100" value="${m0 ? m0.precio : 20000}"></label>
         <label class="field full"><span class="field-label">Talles (separados por coma)</span><input type="text" id="mf-tal" value="${esc((m0 ? m0.talles : TALLES_INICIALES).join(', '))}"></label>
         <div class="field full"><span class="field-label">Colores</span><div id="mf-col"></div><button type="button" class="panel-btn" id="mf-add">＋ Agregar color</button></div>
+        <details class="field full mf-talles" ${m0 && m0.talles.some((t) => ajusteTalle(m0, t).costo > 0 || ajusteTalle(m0, t).precio > 0) ? 'open' : ''}>
+          <summary><b>Precio distinto por talle</b> (opcional, por ejemplo del 6 en adelante)</summary>
+          <p class="field-help">Dejá vacío para usar el costo y precio del modelo. Lo que cargues se usa en la tienda, los pedidos, el stock y los resultados.</p>
+          <div class="mf-desde">Desde el talle <select id="mf-desde"></select> costo $ <input type="number" id="mf-desde-cos" min="0" step="100"> venta $ <input type="number" id="mf-desde-pre" min="0" step="100"> <button type="button" class="panel-btn" id="mf-desde-ok">Aplicar</button></div>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Talle</th><th>Costo ($)</th><th>Venta ($)</th></tr></thead><tbody id="mf-tt"></tbody></table></div>
+        </details>
       </div>
       <p class="field-help">Si quitás un color o talle que todavía tiene stock, se conserva para no perder unidades.</p>
       <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="mf-ok">Guardar</button></div>`, (body) => {
@@ -1862,6 +1950,27 @@
       };
       draw();
       $('#mf-add', body).addEventListener('click', () => { colores.push({ nombre: 'Nuevo color', sigla: 'NUE', hex: '#888888' }); draw(); });
+      // Tabla de precios por talle (vacío = usa el del modelo)
+      const ajustes = {};
+      if (m0) m0.talles.forEach((t) => { const a = ajusteTalle(m0, t); if (a.costo > 0 || a.precio > 0) ajustes[t] = { costo: a.costo || '', precio: a.precio || '' }; });
+      const tallesForm = () => $('#mf-tal', body).value.split(',').map((t) => t.trim()).filter(Boolean);
+      const drawTalles = () => {
+        const ts = tallesForm();
+        $('#mf-desde', body).innerHTML = ts.map((t) => `<option>${esc(t)}</option>`).join('');
+        $('#mf-tt', body).innerHTML = ts.map((t) => `<tr><td>T${esc(t)}</td>
+          <td><input type="number" min="0" step="100" data-t="${esc(t)}" data-k="costo" value="${(ajustes[t] || {}).costo || ''}" placeholder="${$('#mf-cos', body).value || 0}"></td>
+          <td><input type="number" min="0" step="100" data-t="${esc(t)}" data-k="precio" value="${(ajustes[t] || {}).precio || ''}" placeholder="${$('#mf-pre', body).value || 0}"></td></tr>`).join('');
+        $$('#mf-tt input', body).forEach((inp) => inp.addEventListener('input', () => { ajustes[inp.dataset.t] = { ...(ajustes[inp.dataset.t] || {}), [inp.dataset.k]: inp.value }; }));
+      };
+      drawTalles();
+      ['#mf-tal', '#mf-cos', '#mf-pre'].forEach((s) => $(s, body).addEventListener('change', drawTalles));
+      $('#mf-desde-ok', body).addEventListener('click', () => {
+        const ts = tallesForm(), desde = ts.indexOf($('#mf-desde', body).value);
+        const cos = $('#mf-desde-cos', body).value, pre = $('#mf-desde-pre', body).value;
+        if (!cos && !pre) { toast('Escribí el costo o el precio para esos talles.', true); return; }
+        ts.slice(desde).forEach((t) => { ajustes[t] = { costo: cos || (ajustes[t] || {}).costo || '', precio: pre || (ajustes[t] || {}).precio || '' }; });
+        drawTalles();
+      });
       $('#mf-ok', body).addEventListener('click', async () => {
         const nombre = $('#mf-nom', body).value.trim();
         const sigla = (m0 ? m0.sigla : $('#mf-sig', body).value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''));
@@ -1872,6 +1981,16 @@
         const m = m0 ? { ...m0, nombre, talles, colores: cols, costo: Number($('#mf-cos', body).value) || 0, precio: Number($('#mf-pre', body).value) || 0 }
           : nuevoModelo(nombre, sigla, Number($('#mf-cos', body).value) || 0, Number($('#mf-pre', body).value) || 0, cols, talles);
         await Store.save('modelos', m);
+        // Precios por talle (solo los talles que tienen algún valor propio)
+        const propios = {};
+        talles.forEach((t) => {
+          const a = ajustes[t] || {}, cos = Math.round(Number(a.costo) || 0), pre = Math.round(Number(a.precio) || 0);
+          if (cos > 0 || pre > 0) propios[t] = { ...(cos > 0 ? { costo: cos } : {}), ...(pre > 0 ? { precio: pre } : {}) };
+        });
+        const cfg = cotizador();
+        const porTalle = { ...(cfg.porTalle || {}) };
+        if (Object.keys(propios).length) porTalle[m.id] = propios; else delete porTalle[m.id];
+        if (JSON.stringify(porTalle) !== JSON.stringify(cfg.porTalle || {})) await Store.setConfig('cotizador', { ...cfg, porTalle });
         const nuevas = variantesDe(m, Store.data.variantes);
         await Store.saveMany('variantes', nuevas);
         // Combinaciones quitadas: se borran solo si no tienen stock
