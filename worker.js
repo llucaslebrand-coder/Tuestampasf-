@@ -10,6 +10,9 @@
    Variables y secretos, NUNCA en el código):
      MP_ACCESS_TOKEN       Access Token de producción de Mercado Pago
      SUPABASE_SECRET_KEY   clave secreta (sb_secret_…) o service_role de Supabase
+   Opcional, para que te llegue un WhatsApp cuando entra un pago (CallMeBot):
+     AVISO_WA_TEL          tu número con código de país, ej. 5493425990005
+     AVISO_WA_KEY          la apikey que te manda CallMeBot
    ========================================================== */
 const SUPABASE_URL = 'https://mqbmmzoutrexqebszpqt.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_SbFNSnBsBg-4safCAEsErA_ZUFEMZ93'; // clave pública (la misma de tienda/config.js)
@@ -60,6 +63,17 @@ async function recargoMP(env) {
 /* Monto con recargo: calculado para que, después de la comisión, quede el monto completo (redondeado a $10) */
 const conRecargo = (base, pct) => (pct > 0 ? Math.ceil(base / (1 - pct / 100) / 10) * 10 : base);
 
+/* ---------- Aviso por WhatsApp al dueño (CallMeBot, opcional) ---------- */
+async function avisarDueno(env, texto) {
+  const tel = (env.AVISO_WA_TEL || '').replace(/\D/g, ''), key = (env.AVISO_WA_KEY || '').trim();
+  if (!tel || !key) return;
+  try {
+    const r = await fetch(`https://api.callmebot.com/whatsapp.php?phone=${tel}&apikey=${encodeURIComponent(key)}&text=${encodeURIComponent(texto)}`);
+    if (!r.ok) console.log('CallMeBot respondió', r.status);
+  } catch (e) { console.log('No se pudo avisar por WhatsApp', e && e.message); }
+}
+const pesos = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+
 /* ---------- Crear el link de pago ---------- */
 async function crearPago(request, env) {
   if (!env.MP_ACCESS_TOKEN || !env.SUPABASE_SECRET_KEY) return json({ error: 'Mercado Pago no está configurado' }, 503);
@@ -107,7 +121,7 @@ async function crearPago(request, env) {
 }
 
 /* ---------- Aviso de Mercado Pago (webhook) ---------- */
-async function webhook(request, env) {
+async function webhook(request, env, ctx) {
   if (!env.MP_ACCESS_TOKEN || !env.SUPABASE_SECRET_KEY) return json({ ok: false }, 200);
   const url = new URL(request.url);
   const body = await request.json().catch(() => ({}));
@@ -133,6 +147,8 @@ async function webhook(request, env) {
     metodo: pago.payment_method_id || '', fecha: pago.date_approved || new Date().toISOString(),
     recargo: Math.max(0, Math.round(monto - montoDe(p))),
   }, monto + 1 >= Number(p.total));
+  const aviso = avisarDueno(env, `💰 Pago recibido con Mercado Pago\n${pesos(monto)} · pedido ${p.numero ? `#${p.numero} ` : ''}(${p.id.slice(-6).toUpperCase()})\nCliente: ${(p.cliente || '').slice(0, 60)}\nYa figura como pagado en el panel.`);
+  if (ctx && ctx.waitUntil) ctx.waitUntil(aviso); else await aviso;
   return json({ ok: true });
 }
 
@@ -152,12 +168,12 @@ async function visitarBase() {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     try {
       if (pathname === '/api/pago' && request.method === 'POST') return await crearPago(request, env);
       if (pathname === '/api/pago/estado') return await estadoPago(request, env);
-      if (pathname === '/api/mp/webhook') return await webhook(request, env);
+      if (pathname === '/api/mp/webhook') return await webhook(request, env, ctx);
       if (pathname.startsWith('/api/')) return json({ error: 'No encontrado' }, 404);
     } catch (e) {
       console.log('Error en la API', pathname, e && e.message);

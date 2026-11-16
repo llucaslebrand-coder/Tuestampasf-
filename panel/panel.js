@@ -2074,7 +2074,9 @@
           </div>
           <h2 style="margin-top:18px">🧹 Empezar de cero</h2>
           <p>Borra <b>todos los pedidos</b> (con sus imágenes), el historial de movimientos y deja <b>el stock de todo en 0</b>. Los modelos, códigos de barra, precios y ajustes quedan igual. Antes de borrar se descarga una copia por las dudas.</p>
-          <div class="row-actions" style="justify-content:flex-start"><button type="button" class="panel-btn" id="aj-reset" style="color:#b3261e;border-color:#b3261e">🧹 Borrar pedidos y poner el stock en 0</button></div>
+          <div class="row-actions" style="justify-content:flex-start">
+            <button type="button" class="panel-btn" id="aj-stock0">📦 Solo poner el stock en 0 (no toca los pedidos)</button>
+            <button type="button" class="panel-btn" id="aj-reset" style="color:#b3261e;border-color:#b3261e">🧹 Borrar pedidos y poner el stock en 0</button></div>
           <h2 style="margin-top:18px">🌐 Accesos</h2>
           <p><a href="../herramientas.html" target="_blank" rel="noopener">Abrir las herramientas en otra pestaña</a></p>
           <p><a href="../index.html" target="_blank" rel="noopener">Abrir la tienda para clientes</a></p>
@@ -2167,6 +2169,17 @@
       downloadBlob(blob, `copia-tuestampa-${new Date().toISOString().slice(0, 10)}.json`);
     });
     /* Empezar de cero: borra pedidos (e imágenes) y movimientos, y pone el stock en 0 */
+    /* Stock en 0 sin tocar pedidos ni movimientos (para volver a contar las remeras) */
+    $('#aj-stock0', el).addEventListener('click', async (e) => {
+      const n = Store.data.variantes.filter((v) => v.stock !== 0).length;
+      if (!n) { toast('El stock ya está todo en 0.'); return; }
+      if (!confirm(`Se pone en 0 el stock de ${n} ${n === 1 ? 'remera' : 'combinaciones de color y talle'}.\nLos pedidos, pagos y resultados no se tocan.\n\n¿Seguimos?`)) return;
+      const btn = e.currentTarget; btn.disabled = true;
+      const ahora = new Date().toISOString();
+      const ok = await Store.saveMany('variantes', Store.data.variantes.filter((v) => v.stock !== 0).map((v) => ({ ...v, stock: 0, actualizado: ahora })));
+      btn.disabled = false;
+      if (ok) { toast('Listo: stock en 0. Ahora cargá lo que tenés con Stock → Ingreso.'); refresh(); }
+    });
     $('#aj-reset', el).addEventListener('click', async (e) => {
       const n = Store.data.pedidos.length;
       const r = prompt(`Se van a borrar ${n} pedido${n === 1 ? '' : 's'}, todo el historial de movimientos y el stock queda en 0.\nNo se puede deshacer.\n\nPara confirmar escribí BORRAR`);
