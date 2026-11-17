@@ -1941,7 +1941,7 @@
     })));
     el.innerHTML = head('Códigos de barra', 'Etiquetas para estampar por dentro del cuello, con el código de cada remera. Cargá lo que llegó del proveedor y descargá la hoja para el DTF.',
       `<div class="seg"><button type="button" data-tipo="a4">Etiquetas A4</button><button type="button" class="on" data-tipo="cuello">Cuello (DTF)</button></div>`) + `
-      <div class="lbl-layout">
+      <div class="cu-layout">
         <div class="lbl-controls">
           <section class="box"><h2>Qué etiquetas</h2>
             <div class="form-grid">
@@ -1964,13 +1964,14 @@
           <div class="lbl-preview-head"><h2>${lista.length} ${lista.length === 1 ? 'etiqueta' : 'etiquetas'} · <span id="cu-med"></span></h2></div>
           <div class="cu-scroll"><canvas id="cu-canvas" class="cu-page" width="900" height="400" role="img" aria-label="Vista previa de la hoja de etiquetas de cuello"></canvas></div>
           <div class="row-actions" style="justify-content:stretch"><button type="button" class="download" id="cu-pdf" ${lista.length ? '' : 'disabled'}>↓ Descargar PDF</button></div>
-          <p class="field-help">El PDF es vectorial y a tamaño real: se abre en Corel (Importar) o en el programa del DTF. Las etiquetas blancas son para remeras oscuras: en la vista previa se ven sobre el cuadriculado.</p>
+          <p class="field-help">El PDF es vectorial y a tamaño real: se abre en Corel (Importar) o en el programa del DTF. En la vista previa cada etiqueta se ve sobre el color de su remera; el PDF sale sin fondo salvo que marques la casilla.</p>
         </section>
       </div>`;
     try { await loadScript('../vendor/jsbarcode.min.js'); } catch (e) { toast('No se pudo cargar el generador de códigos.', true); return; }
     const hoja = hojaCuello(lista, cue.ancho * 10, cue);
     $('#cu-med', el).textContent = `hoja de ${cue.ancho} × ${(hoja.h / 10).toLocaleString('es-AR', { maximumFractionDigits: 1 })} cm`;
-    pintarCuello($('#cu-canvas', el), hoja);
+    // En pantalla siempre se ve cada etiqueta sobre el color de su remera (el PDF respeta la casilla)
+    pintarCuello($('#cu-canvas', el), cue.fondo ? hoja : hojaCuello(lista, cue.ancho * 10, { ...cue, fondo: true }));
     const re = () => renderCuello(el);
     $$('.seg [data-tipo]', el).forEach((b) => b.addEventListener('click', () => { lbl.tipo = b.dataset.tipo; guardarLbl(); refresh(); }));
     $('#cu-mod', el).addEventListener('change', (e) => { cue.modelo = e.target.value; re(); });

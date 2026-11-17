@@ -341,3 +341,8 @@ html, body { overflow-x: clip; }
 .dtfm-name { flex: 1 1 140px; min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .dtfm-alto { color: var(--muted); }
 .dtfm-cv { display: block; width: auto; max-width: 100%; max-height: 360px; margin: 0 auto; border: 1px solid #b9c2d6; background: #fff; box-shadow: 0 4px 14px #1b2a6e1a; }
+
+/* Cuello: tabla arriba a todo el ancho y la hoja debajo (la tabla tiene muchos talles) */
+.cu-layout { display: grid; gap: 14px; }
+.cu-layout .lbl-preview { position: static; }
+.cu-layout .cu-scroll { max-height: 75vh; }
