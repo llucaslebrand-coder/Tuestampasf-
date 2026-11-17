@@ -331,3 +331,13 @@ html, body { overflow-x: clip; }
 .cu-grid td:first-child { text-align: left; }
 .cu-scroll { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: repeating-conic-gradient(#e6e8ee 0 25%, #f6f7fa 0 50%) 0 0 / 16px 16px; }
 .cu-page { display: block; width: 100%; height: auto; }
+
+/* Pedido de DTF solo (panel) */
+.dtfm-list { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.dtfm-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font-size: 13px; }
+.dtfm-list img { width: 48px; height: 48px; border-radius: 8px; object-fit: contain; background: repeating-conic-gradient(#e6e8ee 0 25%, #fff 0 50%) 0 0 / 10px 10px; }
+.dtfm-list input { width: 64px; height: 34px; }
+.dtfm-list label { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.dtfm-name { flex: 1 1 140px; min-width: 0; overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.dtfm-alto { color: var(--muted); }
+.dtfm-cv { display: block; width: auto; max-width: 100%; max-height: 360px; margin: 0 auto; border: 1px solid #b9c2d6; background: #fff; box-shadow: 0 4px 14px #1b2a6e1a; }

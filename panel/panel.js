@@ -659,6 +659,183 @@
   }
 
   /* Formulario de pedido (nuevo o desde el cotizador) */
+  /* =========================================================
+     PEDIDO DE DTF SOLO (cargado a mano): diseños con su medida y
+     cantidad; se acomodan en el lienzo y se calcula el precio igual
+     que en la página de DTF de la tienda (por metro o sueltas).
+     ========================================================= */
+  function pedidoDtfForm() {
+    const cfg = cotizador();
+    const ANCHO = Number(cfg.dtfAncho) || 59, MIN = Number(cfg.dtfMin) || 100, PASO = Number(cfg.dtfPaso) || 50;
+    const PRECIO_METRO = Number(cfg.dtfMetro) || Math.ceil(cfg.metro * (1 + cfg.ganancia / 100) / 500) * 500;
+    const GAP = 0.5;
+    const precioSuelta = (w, h) => {
+      const costoCm2 = cfg.metro / (cfg.ancho * 100) * (1 + cfg.merma / 100);
+      const r = Number(cfg.redondeo) || 1;
+      return Math.ceil((w * h * costoCm2 * (1 + cfg.ganancia / 100) + (Number(cfg.dtfFijo) || 0)) / r) * r;
+    };
+    let modo = cfg.dtfModo === 'sueltas' ? 'sueltas' : 'metro';
+    const piezas = [];   // { file, url, ratio, w, cant }
+    const altoDe = (p) => Math.round(p.w * p.ratio * 10) / 10;
+    /* Acomoda los diseños en estantes (igual que la tienda), probando girarlos */
+    function acomodar(girar) {
+      const U = ANCHO - GAP * 2;
+      const uds = [];
+      piezas.forEach((p, f) => {
+        const w0 = p.w, h0 = altoDe(p);
+        let rot = 0;
+        if (w0 > U && h0 <= U) rot = 90; else if (girar && h0 > w0 && h0 <= U) rot = 90;
+        for (let i = 0; i < p.cant; i++) uds.push({ f, rot, w: rot ? h0 : w0, h: rot ? w0 : h0, w0 });
+      });
+      uds.sort((a, b) => b.h - a.h);
+      const est = [];
+      let y = GAP;
+      uds.forEach((u) => {
+        let sh = est.find((s) => s.x + u.w <= ANCHO - GAP + 0.001 && u.h <= s.h + 0.001);
+        if (!sh) { sh = { y, x: GAP, h: u.h }; est.push(sh); y += u.h + GAP; }
+        u.x = sh.x; u.y = sh.y; sh.x += u.w + GAP;
+      });
+      return { uds, usado: uds.length ? y : 0 };
+    }
+    function plan() {
+      const a = acomodar(false), b = acomodar(true);
+      const best = b.usado < a.usado - 0.01 ? b : a;
+      let largo, total;
+      if (modo === 'sueltas') {
+        largo = Math.max(10, Math.ceil(best.usado));
+        total = piezas.reduce((s, p) => s + precioSuelta(p.w, altoDe(p)) * p.cant, 0);
+        total = Math.max(total, piezas.length ? Number(cfg.dtfMinimo) || 0 : 0);
+      } else {
+        largo = Math.max(MIN, Math.ceil((best.usado - 0.001) / PASO) * PASO);
+        total = Math.round(largo / 100 * PRECIO_METRO);
+      }
+      return { ...best, largo, total: Math.round(total) };
+    }
+
+    openModal('Nuevo pedido', `
+      <div class="seg" style="margin-bottom:12px"><button type="button" data-tipo="remeras">Remeras con estampa</button><button type="button" class="on">Solo DTF</button></div>
+      <form id="pdf-f" class="form-grid">
+        <label class="field"><span class="field-label">Cliente</span><input type="text" id="pdf-cli" required maxlength="80"></label>
+        <label class="field"><span class="field-label">WhatsApp</span><input type="tel" id="pdf-tel" maxlength="30"></label>
+        <label class="field"><span class="field-label">Cómo se cobra</span><select id="pdf-modo">
+          <option value="metro" ${modo === 'metro' ? 'selected' : ''}>Por metro (${ANCHO} cm de ancho, ${money(PRECIO_METRO)} el metro)</option>
+          <option value="sueltas" ${modo === 'sueltas' ? 'selected' : ''}>Estampas sueltas (por tamaño)</option></select></label>
+        <label class="field"><span class="field-label">Estado</span><select id="pdf-est">${ESTADOS.filter(([k]) => k !== 'cancelado').map(([k, l]) => `<option value="${k}" ${k === 'nuevo' ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="field full"><span class="field-label">Diseños (PNG con fondo transparente)</span>
+          <input type="file" id="pdf-files" accept="image/png,image/jpeg,image/webp" multiple>
+          <ul class="dtfm-list" id="pdf-list"></ul></div>
+        <div class="field full"><canvas id="pdf-cv" class="dtfm-cv" width="590" height="200" hidden></canvas><p class="field-help" id="pdf-calc"></p></div>
+        <label class="field"><span class="field-label">Total ($) · se calcula solo, podés cambiarlo</span><input type="number" id="pdf-total" min="0" step="1" value="0"></label>
+        <label class="field"><span class="field-label">Notas</span><input type="text" id="pdf-notas" maxlength="300"></label>
+        <div class="field-help full"><button type="button" class="panel-btn" id="pdf-recalc" hidden>↺ Usar el precio calculado</button></div>
+      </form>
+      <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pdf-ok">Guardar pedido</button></div>`, (body) => {
+      $('.seg [data-tipo="remeras"]', body).addEventListener('click', () => { closeModal(); pedidoForm(); });
+      const totalInp = $('#pdf-total', body);
+      let manual = false, calc = { total: 0, uds: [], largo: 0, usado: 0 };
+      const dibujar = () => {
+        const cv = $('#pdf-cv', body);
+        cv.hidden = !piezas.length;
+        if (!piezas.length) return;
+        const s = cv.width / ANCHO;
+        cv.height = Math.round(calc.largo * s);
+        const c = cv.getContext('2d');
+        c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+        if (modo === 'metro') { c.strokeStyle = '#e0484833'; for (let y = 50; y < calc.largo; y += 50) { c.beginPath(); c.moveTo(0, y * s); c.lineTo(cv.width, y * s); c.stroke(); } }
+        calc.uds.forEach((u) => {
+          const p = piezas[u.f];
+          c.save(); c.translate((u.x + u.w / 2) * s, (u.y + u.h / 2) * s);
+          if (u.rot) c.rotate(Math.PI / 2);
+          const w = p.w * s, h = altoDe(p) * s;
+          if (p.img) c.drawImage(p.img, -w / 2, -h / 2, w, h); else { c.fillStyle = '#c9d3ea'; c.fillRect(-w / 2, -h / 2, w, h); }
+          c.restore();
+        });
+      };
+      const recalc = () => {
+        calc = plan();
+        $('#pdf-calc', body).innerHTML = piezas.length
+          ? (modo === 'metro'
+            ? `Lienzo de <b>${ANCHO} × ${num(calc.largo, 0)} cm</b> (ocupan ${num(calc.usado, 1)} cm) · ${calc.uds.length} copias → <b>${money(calc.total)}</b>`
+            : `${calc.uds.length} estampas sueltas → <b>${money(calc.total)}</b>${Number(cfg.dtfMinimo) && calc.total === Number(cfg.dtfMinimo) ? ' (pedido mínimo)' : ''}`)
+          : 'Subí los diseños para calcular el precio.';
+        if (!manual) totalInp.value = calc.total;
+        $('#pdf-recalc', body).hidden = !manual || Number(totalInp.value) === calc.total;
+        dibujar();
+      };
+      const lista = () => {
+        $('#pdf-list', body).innerHTML = piezas.map((p, i) => `<li data-i="${i}"><img src="${p.url}" alt="">
+          <span class="dtfm-name">${esc(p.file.name)}</span>
+          <label>Ancho <input type="number" data-k="w" min="1" max="${ANCHO}" step="0.5" value="${p.w}"> cm</label>
+          <span class="dtfm-alto">alto ${num(altoDe(p), 1)} cm</span>
+          <label>× <input type="number" data-k="cant" min="1" max="500" value="${p.cant}"></label>
+          ${modo === 'sueltas' ? `<b>${money(precioSuelta(p.w, altoDe(p)))} c/u</b>` : ''}
+          <button type="button" class="icon-btn danger" aria-label="Quitar diseño">✕</button></li>`).join('');
+        $$('#pdf-list li', body).forEach((li) => {
+          const p = piezas[Number(li.dataset.i)];
+          $$('input', li).forEach((inp) => inp.addEventListener('change', () => {
+            if (inp.dataset.k === 'w') p.w = clamp(Math.round((Number(inp.value) || 1) * 2) / 2, 1, ANCHO);
+            else p.cant = clamp(Math.round(Number(inp.value) || 1), 1, 500);
+            lista(); recalc();
+          }));
+          li.querySelector('button').addEventListener('click', () => { URL.revokeObjectURL(p.url); piezas.splice(Number(li.dataset.i), 1); lista(); recalc(); });
+        });
+      };
+      $('#pdf-files', body).addEventListener('change', async (e) => {
+        for (const file of e.target.files) {
+          const url = URL.createObjectURL(file);
+          const img = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = url; });
+          if (!img) { toast(`No se pudo leer ${file.name}.`, true); continue; }
+          const ratio = img.naturalHeight / img.naturalWidth;
+          piezas.push({ file, url, img, ratio, w: Math.min(10, ANCHO - 1), cant: 1 });
+        }
+        e.target.value = '';
+        lista(); recalc();
+      });
+      $('#pdf-modo', body).addEventListener('change', (e) => { modo = e.target.value; lista(); recalc(); });
+      totalInp.addEventListener('input', () => { manual = totalInp.value !== '' && Number(totalInp.value) !== calc.total; $('#pdf-recalc', body).hidden = !manual; });
+      $('#pdf-recalc', body).addEventListener('click', () => { manual = false; recalc(); });
+      recalc();
+      $('#pdf-ok', body).addEventListener('click', async () => {
+        const cliente = $('#pdf-cli', body).value.trim();
+        if (!cliente) { $('#pdf-cli', body).focus(); toast('Escribí el nombre del cliente.', true); return; }
+        if (!piezas.length) { toast('Subí al menos un diseño.', true); return; }
+        const btn = $('#pdf-ok', body);
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        try {
+          // Nombres únicos para que cada diseño se encuentre al armar el lienzo
+          const imgs = [];
+          for (let i = 0; i < piezas.length; i++) {
+            const f = piezas[i].file;
+            imgs.push(await Store.putImage(new File([f], `${i + 1}-${f.name}`, { type: f.type })));
+          }
+          const item = {
+            tipo: 'dtf', modo, ancho: ANCHO, largo: calc.largo, usado: Math.round(calc.usado * 10) / 10,
+            precio_metro: modo === 'metro' ? PRECIO_METRO : null,
+            piezas: piezas.map((p, i) => ({ archivo: imgs[i].name, nombre: p.file.name, ancho: p.w, alto: altoDe(p), cantidad: p.cant, precio: modo === 'sueltas' ? precioSuelta(p.w, altoDe(p)) : null })),
+            layout: calc.uds.map((u) => ({ f: u.f, x: Math.round(u.x * 10) / 10, y: Math.round(u.y * 10) / 10, w: u.w0, rot: u.rot })),
+          };
+          const numero = Store.mode === 'local' ? Store.data.pedidos.reduce((a, p) => Math.max(a, p.numero || 0), 0) + 1 : undefined;
+          const p = {
+            id: uid(), fecha: new Date().toISOString(), origen: 'panel', cliente, telefono: $('#pdf-tel', body).value.trim(),
+            items: [item], total: Number(totalInp.value) || 0, estado: $('#pdf-est', body).value,
+            imagenes: imgs, notas: $('#pdf-notas', body).value.trim(), stock_descontado: false,
+          };
+          if (numero) p.numero = numero;
+          await Store.save('pedidos', p);
+          piezas.forEach((x) => URL.revokeObjectURL(x.url));
+          closeModal();
+          toast('Pedido de DTF guardado.');
+          refresh();
+          pedidoDetalle(p.id);
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo guardar: ' + err.message, true);
+          btn.disabled = false; btn.textContent = 'Guardar pedido';
+        }
+      });
+    });
+  }
+
   /* Formulario de pedido: nuevo, o editar uno existente (pasando su id) */
   function pedidoForm(pref = {}, editId = null) {
     const orig = editId ? Store.data.pedidos.find((x) => x.id === editId) : null;
@@ -672,6 +849,7 @@
     const m0 = modeloDe(pref.modelo_id) || modelos[0];
     const est = pref.estampas && pref.estampas.length ? pref.estampas : [{ zona: 'Pecho', ancho: 10, alto: 10, cantidad: 1 }];
     openModal(orig ? `Editar pedido #${orig.numero || '–'}` : 'Nuevo pedido', `
+      ${orig ? '' : '<div class="seg" style="margin-bottom:12px"><button type="button" class="on">Remeras con estampa</button><button type="button" data-tipo="dtf">Solo DTF</button></div>'}
       <form id="pf" class="form-grid">
         <label class="field"><span class="field-label">Cliente</span><input type="text" id="pf-cli" required maxlength="80" value="${esc(pref.cliente || '')}"></label>
         <label class="field"><span class="field-label">WhatsApp</span><input type="tel" id="pf-tel" placeholder="Ej.: 3424 123456" value="${esc(pref.telefono || '')}"></label>
@@ -692,6 +870,8 @@
         <p class="field-help full" id="pf-stock"></p>
       </form>
       <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="pf-ok">${orig ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`, (body) => {
+      const aDtf = $('.seg [data-tipo="dtf"]', body);
+      if (aDtf) aDtf.addEventListener('click', () => { closeModal(); pedidoDtfForm(); });
       const mod = $('#pf-mod', body);
       // Renglones de remeras: color, talle y cantidad (todas con las mismas estampas)
       const m0x = modeloDe(mod.value);
