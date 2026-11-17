@@ -1604,7 +1604,210 @@
     return new Blob(parts, { type: 'application/pdf' });
   }
 
+  /* =========================================================
+     ETIQUETAS DE CUELLO (DTF): logo TSF + talle + código de barras.
+     Se estampan por dentro del cuello cuando llega la mercadería.
+     Todo en milímetros; se dibuja igual en la vista previa y en el PDF.
+     ========================================================= */
+  const cue = { modelo: null, cant: {}, ancho: null, fondo: false, nombres: false, pagina: 0 };
+  const CUE_CELDA = { w: 60, h: 31 };            // lugar que ocupa cada etiqueta en la hoja
+  const esOscuro = (hex) => {
+    const h = String(hex || '#ffffff').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16) || 0xffffff;
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+  };
+  const PT = 25.4 / 72;   // 1 punto en mm
+  function anchoTxt(s, pt, font, esp = 0) {
+    medidor.font = `${font === 'BI' ? 'italic bold' : font === 'B' ? 'bold' : ''} ${pt}px Arial, Helvetica, sans-serif`;
+    return medidor.measureText(s).width * PT + esp * pt * PT * Math.max(0, s.length - 1);
+  }
+  /* Elementos de una etiqueta centrada en (cx, cy) */
+  function dibujoCuello(v, m, cx, cy) {
+    const col = (m.colores.find((c) => c.nombre === v.color) || {}).hex;
+    const oscuro = esOscuro(col);
+    const ink = oscuro ? [1, 1, 1] : [0.106, 0.165, 0.431];   // blanco o azul de la marca
+    const out = [];
+    const texto = (s, x, y, pt, font, esp = 0, color = ink) => out.push({ t: 'txt', s, x, y, pt, font, esp, color });
+    // Fila 1: TSF + recuadro del talle
+    const ptTsf = 36, wTsf = anchoTxt('TSF', ptTsf, 'BI'), caja = 9.6, sep = 2.6;
+    const x0 = cx - (wTsf + sep + caja) / 2, yTop = cy - 13;
+    texto('TSF', x0, yTop + 9.2, ptTsf, 'BI');
+    const bx = x0 + wTsf + sep;
+    out.push({ t: 'rect', x: bx, y: yTop, w: caja, h: caja, r: 1.6, lw: 0.45, color: ink });
+    const ptT = 3.8, tl = 'TALLE';
+    texto(tl, bx + caja / 2 - anchoTxt(tl, ptT, 'B', 0.12) / 2, yTop + 2.6, ptT, 'B', 0.12);
+    const ptN = String(v.talle).length > 2 ? 11 : 15;
+    texto(String(v.talle), bx + caja / 2 - anchoTxt(String(v.talle), ptN, 'B') / 2, yTop + 8.2, ptN, 'B');
+    // Fila 2: nombre
+    const nom = 'TU ESTAMPA · SANTA FE', ptNom = 5.6;
+    texto(nom, cx - anchoTxt(nom, ptNom, 'B', 0.22) / 2, yTop + 13.6, ptNom, 'B', 0.22);
+    // Línea fina
+    out.push({ t: 'rect', x: cx - 26, y: yTop + 15.2, w: 52, h: 0.18, color: ink, fill: true });
+    // Código de barras (en remeras oscuras, en recuadro blanco con barras negras)
+    const b = barras(v.codigo);
+    const bw = 52, bh = 7.6, by = yTop + 16.6;
+    let barColor = ink, txtColor = ink;
+    if (oscuro) {
+      out.push({ t: 'rect', x: cx - bw / 2 - 3.6, y: by - 0.9, w: bw + 7.2, h: bh + 4.4, r: 0.6, color: [1, 1, 1], fill: true });
+      barColor = [0.11, 0.11, 0.12]; txtColor = barColor;
+    }
+    out.push({ t: 'bars', x: cx - bw / 2, y: by, h: bh, mod: bw / b.total, bars: b.bars, color: barColor });
+    const ptC = 4.4;
+    texto(v.codigo, cx - anchoTxt(v.codigo, ptC, 'B', 0.2) / 2, by + bh + 2.4, ptC, 'B', 0.2, txtColor);
+    return out;
+  }
+  /* Reparte las etiquetas en una hoja del ancho del DTF */
+  function hojaCuello(lista, anchoMm, cfg) {
+    const mg = 5, gap = 3, cw = CUE_CELDA.w, ch = CUE_CELDA.h + (cfg.nombres ? 4 : 0);
+    const cols = Math.max(1, Math.floor((anchoMm - mg * 2 + gap) / (cw + gap)));
+    const rows = Math.ceil(lista.length / cols);
+    const items = [];
+    lista.forEach(({ v, m }, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      const x = mg + c * (cw + gap), y = mg + r * (ch + gap);
+      const hex = (m.colores.find((k) => k.nombre === v.color) || {}).hex || '#ffffff';
+      if (cfg.fondo) {
+        const n = parseInt(hex.replace('#', ''), 16) || 0;
+        items.push({ t: 'rect', x, y, w: cw, h: CUE_CELDA.h, r: 2, color: [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255], fill: true });
+      }
+      items.push(...dibujoCuello(v, m, x + cw / 2, y + CUE_CELDA.h / 2));
+      if (cfg.nombres) { const s = `${m.nombre} · ${v.color} · T${v.talle}`; items.push({ t: 'txt', s, x: x + cw / 2 - anchoTxt(s, 6, 'R') / 2, y: y + CUE_CELDA.h + 3.2, pt: 6, font: 'R', esp: 0, color: [0.45, 0.47, 0.52] }); }
+    });
+    return { w: anchoMm, h: Math.max(40, mg * 2 + rows * (ch + gap) - gap), items, cols };
+  }
+  /* Ruta de rectángulo con esquinas redondeadas (para el PDF) */
+  function rutaRedonda(x, y, w, h, r) {
+    const k = 0.5523 * r;
+    return `${x + r} ${y} m ${x + w - r} ${y} l ${x + w - r + k} ${y} ${x + w} ${y + r - k} ${x + w} ${y + r} c ${x + w} ${y + h - r} l ${x + w} ${y + h - r + k} ${x + w - r + k} ${y + h} ${x + w - r} ${y + h} c ${x + r} ${y + h} l ${x + r - k} ${y + h} ${x} ${y + h - r + k} ${x} ${y + h - r} c ${x} ${y + r} l ${x} ${y + r - k} ${x + r - k} ${y} ${x + r} ${y} c h`;
+  }
+  function pintarCuello(canvas, hoja) {
+    const s = canvas.width / hoja.w;
+    canvas.height = Math.round(hoja.h * s);
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+    const rgb = (k) => `rgb(${k.map((x) => Math.round(x * 255)).join(',')})`;
+    hoja.items.forEach((it) => {
+      if (it.t === 'rect') {
+        c.beginPath();
+        if (c.roundRect && it.r) c.roundRect(it.x * s, it.y * s, it.w * s, it.h * s, it.r * s); else c.rect(it.x * s, it.y * s, it.w * s, it.h * s);
+        if (it.fill) { c.fillStyle = rgb(it.color); c.fill(); } else { c.strokeStyle = rgb(it.color); c.lineWidth = it.lw * s; c.stroke(); }
+      }
+      if (it.t === 'txt') {
+        c.fillStyle = rgb(it.color);
+        c.font = `${it.font === 'BI' ? 'italic bold' : it.font === 'B' ? 'bold' : ''} ${it.pt * PT * s}px Arial, Helvetica, sans-serif`;
+        if ('letterSpacing' in c) { c.letterSpacing = `${it.esp * it.pt * PT * s}px`; c.fillText(it.s, it.x * s, it.y * s); c.letterSpacing = '0px'; }
+        else { let x = it.x; for (const ch of it.s) { c.fillText(ch, x * s, it.y * s); x += anchoTxt(ch, it.pt, it.font) + it.esp * it.pt * PT; } }
+      }
+      if (it.t === 'bars') { c.fillStyle = rgb(it.color); it.bars.forEach((b) => c.fillRect((it.x + b.x * it.mod) * s, it.y * s, Math.max(0.5, b.w * it.mod * s), it.h * s)); }
+    });
+  }
+  /* PDF vectorial del tamaño de la hoja (para el DTF o para abrir en Corel) */
+  function pdfCuello(hoja) {
+    const P = (mm) => (mm * 72 / 25.4).toFixed(3);
+    const Hh = hoja.h;
+    const enc = (str) => { let o = ''; for (const ch of str) { const code = ch.charCodeAt(0); if (ch === '(' || ch === ')' || ch === '\\') o += '\\' + ch; else if (code < 32 || code > 126) o += '\\' + (code > 255 ? 63 : code).toString(8).padStart(3, '0'); else o += ch; } return o; };
+    const col = (k, stroke) => `${k.map((x) => x.toFixed(3)).join(' ')} ${stroke ? 'RG' : 'rg'}`;
+    let s = '';
+    hoja.items.forEach((it) => {
+      if (it.t === 'rect') {
+        // En el PDF el eje Y va hacia arriba: se invierte con una matriz
+        s += `q 2.83465 0 0 -2.83465 0 ${P(Hh)} cm ${it.fill ? col(it.color) : `${col(it.color, true)} ${it.lw} w`} `;
+        s += it.r ? rutaRedonda(it.x, it.y, it.w, it.h, it.r) : `${it.x} ${it.y} ${it.w} ${it.h} re`;
+        s += ` ${it.fill ? 'f' : 'S'} Q\n`;
+      }
+      if (it.t === 'txt') s += `BT ${col(it.color)} /${it.font === 'BI' ? 'F3' : it.font === 'B' ? 'F2' : 'F1'} ${it.pt.toFixed(2)} Tf ${(it.esp * it.pt).toFixed(3)} Tc ${P(it.x)} ${P(Hh - it.y)} Td (${enc(it.s)}) Tj ET\n`;
+      if (it.t === 'bars') { s += `${col(it.color)}\n`; it.bars.forEach((b) => { s += `${P(it.x + b.x * it.mod)} ${P(Hh - it.y - it.h)} ${P(b.w * it.mod)} ${P(it.h)} re f\n`; }); }
+    });
+    const objs = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${P(hoja.w)} ${P(Hh)}] /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> /Contents 4 0 R >>`,
+      null,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique /Encoding /WinAnsiEncoding >>',
+    ];
+    const body = new TextEncoder().encode(s);
+    let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+    const offs = [];
+    const parts = [];
+    let len = 0;
+    const pushS = (str) => { const u = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) u[i] = str.charCodeAt(i) & 255; parts.push(u); len += u.length; };
+    pushS(out);
+    objs.forEach((o, i) => {
+      offs.push(len);
+      pushS(`${i + 1} 0 obj\n`);
+      if (o === null) { pushS(`<< /Length ${body.length} >>\nstream\n`); parts.push(body); len += body.length; pushS('\nendstream'); } else pushS(o);
+      pushS('\nendobj\n');
+    });
+    const xref = len;
+    pushS(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
+  async function renderCuello(el) {
+    const modelos = Store.data.modelos;
+    if (!cue.modelo || !modeloDe(cue.modelo)) cue.modelo = modelos[0] && modelos[0].id;
+    const m = modeloDe(cue.modelo);
+    if (!cue.ancho) cue.ancho = Number(cotizador().dtfAncho) || 59;
+    const varDe = (mm, c, t) => Store.data.variantes.find((x) => x.modelo_id === mm.id && x.color === c && x.talle === t);
+    // Lista a imprimir: todas las cantidades cargadas, de todos los modelos
+    const lista = [];
+    modelos.forEach((mm) => mm.colores.forEach((c) => mm.talles.forEach((t) => {
+      const v = varDe(mm, c.nombre, t);
+      const n = v ? Number(cue.cant[v.id]) || 0 : 0;
+      for (let i = 0; i < n; i++) lista.push({ v, m: mm });
+    })));
+    el.innerHTML = head('Códigos de barra', 'Etiquetas para estampar por dentro del cuello, con el código de cada remera. Cargá lo que llegó del proveedor y descargá la hoja para el DTF.',
+      `<div class="seg"><button type="button" data-tipo="a4">Etiquetas A4</button><button type="button" class="on" data-tipo="cuello">Cuello (DTF)</button></div>`) + `
+      <div class="lbl-layout">
+        <div class="lbl-controls">
+          <section class="box"><h2>Qué etiquetas</h2>
+            <div class="form-grid">
+              <label class="field"><span class="field-label">Modelo</span><select id="cu-mod">${modelos.map((x) => `<option value="${x.id}" ${x.id === m.id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+              <label class="field"><span class="field-label">Ancho del DTF (cm)</span><input type="number" id="cu-ancho" min="20" max="120" value="${cue.ancho}"></label>
+            </div>
+            <p class="field-help">Cuántas de cada color y talle (por ejemplo, lo que te llegó del proveedor):</p>
+            <div class="table-wrap"><table class="tbl cu-grid"><thead><tr><th>Color</th>${m.talles.map((t) => `<th>T${esc(t)}</th>`).join('')}</tr></thead><tbody>
+              ${m.colores.map((c) => `<tr><td><span class="color-name"><i style="background:${c.hex}"></i>${esc(c.nombre)}</span></td>${m.talles.map((t) => { const v = varDe(m, c.nombre, t); return `<td>${v ? `<input type="number" min="0" max="500" data-v="${v.id}" value="${cue.cant[v.id] || ''}" aria-label="${esc(c.nombre)} talle ${esc(t)}">` : '–'}</td>`; }).join('')}</tr>`).join('')}
+            </tbody></table></div>
+            <div class="row-actions" style="justify-content:flex-start">
+              <button type="button" class="panel-btn" id="cu-todas">Una de cada combinación (todos los modelos)</button>
+              <button type="button" class="panel-btn" id="cu-vaciar">Vaciar</button>
+            </div>
+            <label class="check"><input type="checkbox" id="cu-fondo" ${cue.fondo ? 'checked' : ''}> Mostrar el color de la remera de fondo (para ver o armar en Corel, no para imprimir)</label>
+            <label class="check"><input type="checkbox" id="cu-nom" ${cue.nombres ? 'checked' : ''}> Escribir modelo, color y talle debajo de cada una</label>
+          </section>
+        </div>
+        <section class="box lbl-preview">
+          <div class="lbl-preview-head"><h2>${lista.length} ${lista.length === 1 ? 'etiqueta' : 'etiquetas'} · <span id="cu-med"></span></h2></div>
+          <div class="cu-scroll"><canvas id="cu-canvas" class="cu-page" width="900" height="400" role="img" aria-label="Vista previa de la hoja de etiquetas de cuello"></canvas></div>
+          <div class="row-actions" style="justify-content:stretch"><button type="button" class="download" id="cu-pdf" ${lista.length ? '' : 'disabled'}>↓ Descargar PDF</button></div>
+          <p class="field-help">El PDF es vectorial y a tamaño real: se abre en Corel (Importar) o en el programa del DTF. Las etiquetas blancas son para remeras oscuras: en la vista previa se ven sobre el cuadriculado.</p>
+        </section>
+      </div>`;
+    try { await loadScript('../vendor/jsbarcode.min.js'); } catch (e) { toast('No se pudo cargar el generador de códigos.', true); return; }
+    const hoja = hojaCuello(lista, cue.ancho * 10, cue);
+    $('#cu-med', el).textContent = `hoja de ${cue.ancho} × ${(hoja.h / 10).toLocaleString('es-AR', { maximumFractionDigits: 1 })} cm`;
+    pintarCuello($('#cu-canvas', el), hoja);
+    const re = () => renderCuello(el);
+    $$('.seg [data-tipo]', el).forEach((b) => b.addEventListener('click', () => { lbl.tipo = b.dataset.tipo; guardarLbl(); refresh(); }));
+    $('#cu-mod', el).addEventListener('change', (e) => { cue.modelo = e.target.value; re(); });
+    $('#cu-ancho', el).addEventListener('change', (e) => { cue.ancho = clamp(Math.round(Number(e.target.value) || 59), 20, 120); re(); });
+    $$('.cu-grid input', el).forEach((inp) => inp.addEventListener('change', () => { cue.cant[inp.dataset.v] = clamp(Math.round(Number(inp.value) || 0), 0, 500); re(); }));
+    $('#cu-todas', el).addEventListener('click', () => { Store.data.variantes.forEach((v) => { cue.cant[v.id] = 1; }); cue.nombres = true; re(); });
+    $('#cu-vaciar', el).addEventListener('click', () => { cue.cant = {}; re(); });
+    $('#cu-fondo', el).addEventListener('change', (e) => { cue.fondo = e.target.checked; re(); });
+    $('#cu-nom', el).addEventListener('change', (e) => { cue.nombres = e.target.checked; re(); });
+    $('#cu-pdf', el).addEventListener('click', () => {
+      downloadBlob(pdfCuello(hoja), `etiquetas-cuello-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast('PDF listo, a tamaño real.');
+    });
+  }
+
   async function renderEtiquetas(el) {
+    if (lbl.tipo === 'cuello') return renderCuello(el);
     const modelos = Store.data.modelos;
     if (!lbl.modelo || !modeloDe(lbl.modelo)) { lbl.modelo = modelos[0] && modelos[0].id; lbl.colores = null; lbl.talles = null; }
     const m = modeloDe(lbl.modelo);
@@ -1622,7 +1825,7 @@
     const porHoja = H.cols * H.rows;
 
     el.innerHTML = head('Códigos de barra', 'Armá tus etiquetas en hoja A4, mirá cómo quedan y descargá el PDF para imprimir. Después escaneá cada bolsa para cargar el stock.',
-      '<button type="button" class="panel-btn" data-act="scan">▦ Escanear</button>') + `
+      '<div class="seg"><button type="button" class="on" data-tipo="a4">Etiquetas A4</button><button type="button" data-tipo="cuello">Cuello (DTF)</button></div><button type="button" class="panel-btn" data-act="scan">▦ Escanear</button>') + `
       <div class="lbl-layout">
         <div class="lbl-controls">
           <section class="box"><h2>Qué etiquetas</h2>
@@ -1701,6 +1904,7 @@
     $$('#lb-col button', el).forEach((b) => b.addEventListener('click', () => { const c = b.dataset.c; lbl.colores = lbl.colores.includes(c) ? lbl.colores.filter((x) => x !== c) : [...lbl.colores, c]; lbl.pagina = 0; re(); }));
     $$('#lb-tal button', el).forEach((b) => b.addEventListener('click', () => { const t = b.dataset.t; lbl.talles = lbl.talles.includes(t) ? lbl.talles.filter((x) => x !== t) : [...lbl.talles, t]; lbl.pagina = 0; re(); }));
     el.querySelector('[data-act="scan"]').addEventListener('click', openScanner);
+    $$('.seg [data-tipo]', el).forEach((b) => b.addEventListener('click', () => { lbl.tipo = b.dataset.tipo; guardarLbl(); refresh(); }));
     $('#lb-pdf', el).addEventListener('click', () => {
       const blob = pdfEtiquetas(pages, logo);
       downloadBlob(blob, `etiquetas-${m.sigla || 'remeras'}-${new Date().toISOString().slice(0, 10)}.pdf`);

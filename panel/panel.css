@@ -321,3 +321,13 @@ html, body { overflow-x: clip; }
 .tp-saldo.is-ok { color: #1e7a3c; }
 @media (max-width: 640px) { .tbl-pedidos .tp-tot { text-align: right; } }
 .cobro-form button { flex: none; width: auto; height: 38px; }
+
+/* Códigos de barra: selector A4 / Cuello y hoja de etiquetas de cuello */
+.seg { display: inline-flex; overflow: hidden; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
+.seg button { padding: 8px 14px; border: 0; background: none; font: 700 13px var(--font, inherit); color: var(--muted, #5b6478); cursor: pointer; }
+.seg button.on { background: var(--brand, #0d4fa3); color: #fff; }
+.cu-grid input { width: 54px; height: 34px; text-align: center; }
+.cu-grid td, .cu-grid th { padding: 4px; text-align: center; }
+.cu-grid td:first-child { text-align: left; }
+.cu-scroll { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: repeating-conic-gradient(#e6e8ee 0 25%, #f6f7fa 0 50%) 0 0 / 16px 16px; }
+.cu-page { display: block; width: 100%; height: auto; }
