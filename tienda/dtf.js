@@ -419,6 +419,7 @@
           const { error: e2 } = await sb.storage.from('pedidos').upload(`tienda/${id}/${files[i].name}`, files[i].blob, { contentType: files[i].blob.type });
           if (e2) throw e2;
         }
+        if (window.TEVend) await TEVend.asignar(id);
       } else {
         await guardarDemo(pedido, files);
       }
@@ -487,7 +488,8 @@
       s.style.animationDuration = [3.8, 4.5, 5.2, 5.9][i % 4] + 's';
       energy.appendChild(s);
     }
-    await cargarConfig();
+    await Promise.all([cargarConfig(), window.TEVend ? TEVend.iniciar() : null]);
+    if (window.TEVend) TEVend.prepararFormulario();
     if (MODO() === 'sueltas') {
       $('#dtf-title').textContent = 'Imprimí tus estampas DTF';
       $('.shop-opts .lead').innerHTML = `Estampas DTF sueltas, de hasta <b>${cm(usable())} cm</b> de ancho. Subí tus diseños, elegí la medida y cuántas copias querés: cada estampa se cobra según su tamaño. Te las entregamos listas para planchar.`;

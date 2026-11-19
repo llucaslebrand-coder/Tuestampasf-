@@ -4,6 +4,8 @@
    - /api/pago            → arma el link de pago de Mercado Pago de un pedido.
    - /api/pago/estado     → dice si un pedido ya está pagado (página de regreso).
    - /api/mp/webhook      → Mercado Pago avisa los pagos: se verifican y se marca el pedido.
+   - /api/vendedor        → datos del vendedor de un link (nombre y stock sin números).
+   - /api/vendedor/asignar → marca un pedido recién hecho de la tienda con su vendedor.
    - Una vez por día visita la base de Supabase para que no se pause.
 
    Claves (se cargan en Cloudflare → tuestampasf → Configuración →
@@ -32,7 +34,7 @@ function sbHeaders(env) {
   return h;
 }
 async function leerPedido(env, id) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${encodeURIComponent(id)}&select=id,numero,origen,estado,total,sena,sena_pagada,cliente,pago`, { headers: sbHeaders(env) });
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${encodeURIComponent(id)}&select=id,numero,origen,estado,total,sena,sena_pagada,cliente,pago,fecha,historial`, { headers: sbHeaders(env) });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
     throw new Error(`Supabase ${res.status} ${t.slice(0, 120)}`);
@@ -160,6 +162,48 @@ async function estadoPago(request, env) {
   return json({ pagado: !!(p && p.sena_pagada), monto: p ? montoDe(p) : 0, total: p ? Number(p.total) : 0 });
 }
 
+/* ---------- Vendedores (links personales) ---------- */
+const COD_OK = /^[a-z0-9]{4,16}$/;
+async function leerVendedor(env, codigo) {
+  if (!COD_OK.test(String(codigo || ''))) return null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/config?clave=eq.vendedores&select=valor`, { headers: sbHeaders(env) });
+  if (!res.ok) throw new Error(`Supabase ${res.status}`);
+  const rows = await res.json();
+  const lista = (rows[0] && rows[0].valor && rows[0].valor.lista) || [];
+  return lista.find((s) => s.codigo === codigo && s.activo !== false) || null;
+}
+/* Nombre del vendedor y stock como "hay / pocas / sin stock" (nunca cantidades ni costos) */
+async function datosVendedor(request, env) {
+  if (!env.SUPABASE_SECRET_KEY) return json({ error: 'No configurado' }, 503);
+  const s = await leerVendedor(env, new URL(request.url).searchParams.get('v'));
+  if (!s) return json({ error: 'Link de vendedor no válido' }, 404);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/variantes?select=modelo_id,color,talle,stock,minimo`, { headers: sbHeaders(env) });
+  const vars = res.ok ? await res.json() : [];
+  const stock = {};
+  vars.forEach((v) => { stock[`${v.modelo_id}|${v.color}|${v.talle}`] = v.stock <= 0 ? 'sin' : v.stock <= (v.minimo || 0) ? 'pocas' : 'hay'; });
+  return json({ nombre: s.nombre, pctVenta: Number(s.pctVenta) || 0, pctEntrega: Number(s.pctEntrega) || 0, stock });
+}
+/* Deja anotado en el pedido qué vendedor lo trajo (solo pedidos de la tienda recién hechos) */
+async function asignarVendedor(request, env) {
+  if (!env.SUPABASE_SECRET_KEY) return json({ error: 'No configurado' }, 503);
+  const { pedido: id, v, entrega } = await request.json().catch(() => ({}));
+  if (!ID_OK.test(String(id || ''))) return json({ error: 'Pedido inválido' }, 400);
+  const s = await leerVendedor(env, v);
+  if (!s) return json({ error: 'Vendedor no válido' }, 404);
+  const p = await leerPedido(env, id);
+  if (!p || p.origen !== 'tienda') return json({ error: 'No encontramos el pedido' }, 404);
+  if (Date.now() - new Date(p.fecha).getTime() > 2 * 3600e3) return json({ error: 'El pedido es de hace mucho' }, 409);
+  const hist = Array.isArray(p.historial) ? p.historial : [];
+  if (hist.some((h) => h && h.tipo === 'vendedor')) return json({ ok: true, yaTenia: true });
+  const nivel = entrega ? 'entrega' : 'venta';
+  const marca = { tipo: 'vendedor', codigo: s.codigo, nombre: s.nombre, nivel, pct: Number(nivel === 'entrega' ? s.pctEntrega : s.pctVenta) || 0, fecha: new Date().toISOString(), pagada: null };
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: { ...sbHeaders(env), Prefer: 'return=minimal' }, body: JSON.stringify({ historial: [...hist, marca] }),
+  });
+  if (!res.ok) throw new Error(`Supabase PATCH ${res.status}`);
+  return json({ ok: true });
+}
+
 async function visitarBase() {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/modelos?select=id&limit=1`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
@@ -174,6 +218,8 @@ export default {
       if (pathname === '/api/pago' && request.method === 'POST') return await crearPago(request, env);
       if (pathname === '/api/pago/estado') return await estadoPago(request, env);
       if (pathname === '/api/mp/webhook') return await webhook(request, env, ctx);
+      if (pathname === '/api/vendedor' && request.method === 'GET') return await datosVendedor(request, env);
+      if (pathname === '/api/vendedor/asignar' && request.method === 'POST') return await asignarVendedor(request, env);
       if (pathname.startsWith('/api/')) return json({ error: 'No encontrado' }, 404);
     } catch (e) {
       console.log('Error en la API', pathname, e && e.message);

@@ -511,7 +511,10 @@
     $('#color-name').textContent = st.color;
     const sizes = $('#sizes');
     const cant = (t) => (st.lineas.find((l) => l.color === st.color && l.talle === t) || {}).cantidad || 0;
-    sizes.innerHTML = m.talles.map((t) => `<button type="button" class="${cant(t) ? 'has-qty' : ''}" data-t="${esc(t)}" aria-label="Sumar una remera ${esc(st.color)} talle ${esc(t)}${cant(t) ? ` (van ${cant(t)})` : ''}">${esc(t)}${cant(t) ? `<i aria-hidden="true">${cant(t)}</i>` : ''}</button>`).join('');
+    // En modo vendedor se ve si hay stock (sin cantidades)
+    const nivel = (t) => (window.TEVend ? TEVend.stock(m.id, st.color, t) : null);
+    const NIV = { hay: 'hay', pocas: 'pocas', sin: 'sin stock' };
+    sizes.innerHTML = m.talles.map((t) => `<button type="button" class="${cant(t) ? 'has-qty' : ''} ${nivel(t) ? `st-${nivel(t)}` : ''}" data-t="${esc(t)}" aria-label="Sumar una remera ${esc(st.color)} talle ${esc(t)}${nivel(t) ? ` (${NIV[nivel(t)]})` : ''}${cant(t) ? ` (van ${cant(t)})` : ''}">${esc(t)}${nivel(t) ? `<small>${NIV[nivel(t)]}</small>` : ''}${cant(t) ? `<i aria-hidden="true">${cant(t)}</i>` : ''}</button>`).join('');
     $$('button', sizes).forEach((b) => b.addEventListener('click', () => { sumarRemera(st.color, b.dataset.t, 1); renderStep1(); $(`#sizes button[data-t="${CSS.escape(b.dataset.t)}"]`)?.focus(); }));
     const aviso = avisoTalles(m);
     $('#sizes-precio').hidden = !aviso;
@@ -969,6 +972,7 @@
           const { error: e2 } = await sb.storage.from('pedidos').upload(`tienda/${id}/${f.name}`, f.blob, { contentType: f.blob.type });
           if (e2) throw e2;
         }
+        if (window.TEVend) await TEVend.asignar(id);
       } else {
         await guardarDemo(pedido, files);
       }
@@ -1132,8 +1136,9 @@
       s.style.animationDuration = dur[i % 4] + 's';
       energy.appendChild(s);
     }
-    await cargarCatalogo();
+    await Promise.all([cargarCatalogo(), window.TEVend ? TEVend.iniciar() : null]);
     st.modelo = catalogo[0].id;
+    if (window.TEVend) TEVend.prepararFormulario();
     const pedido = new URLSearchParams(location.search).get('color');
     if (pedido && catalogo[0].colores.some((c) => c.nombre === pedido)) st.color = pedido;
     const wa = whatsappNegocio();

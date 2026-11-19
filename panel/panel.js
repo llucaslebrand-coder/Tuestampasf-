@@ -82,6 +82,7 @@
   const ICON = {
     home: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    people: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.6c2.6-.3 4.8 1.4 5.5 4.9"/>',
     cart: '<path d="M3 4h2l2.4 11h11l2-8H6.3"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
     orders: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     stock: '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5" opacity=".5"/>',
@@ -368,7 +369,8 @@
   const VIEWS = [
     { id: 'inicio', label: 'Inicio', sub: 'Resumen del negocio', icon: 'home', render: renderInicio },
     { id: 'pedidos', label: 'Pedidos', sub: 'Clientes y producción', icon: 'orders', render: renderPedidos },
-    { id: 'resultados', label: 'Resultados', sub: 'Ventas y ganancia', icon: 'chart', render: renderResultados },
+    { id: 'resultados', label: 'Resultados', sub: 'Ventas y rentabilidad', icon: 'chart', render: renderResultados },
+    { id: 'vendedores', label: 'Vendedores', sub: 'Links y comisiones', icon: 'people', render: renderVendedores },
     { id: 'stock', label: 'Stock', sub: 'Remeras lisas por talle', icon: 'stock', render: renderStock },
     { id: 'reponer', label: 'Reponer', sub: 'Lo que hay que comprar', icon: 'cart', render: renderReponer },
     { id: 'etiquetas', label: 'Códigos de barra', sub: 'Etiquetas para imprimir', icon: 'barcode', render: renderEtiquetas },
@@ -646,7 +648,7 @@
       <div class="tabs" role="group" aria-label="Filtrar pedidos">${filtros.map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${pedidoFiltro === k}">${l}</button>`).join('')}</div>
       ${list.length ? `<div class="table-wrap"><table class="tbl tbl-pedidos"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Detalle</th><th>Estado</th><th class="num">Total</th></tr></thead><tbody>
         ${list.map((p) => `<tr data-id="${p.id}" style="cursor:pointer" tabindex="0">
-          <td class="tp-num">#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td class="tp-fecha">${fmtDate(p.fecha)}</td>
+          <td class="tp-num">#${p.numero || '–'}${p.origen === 'tienda' ? ' <span class="badge st-nuevo">Tienda</span>' : ''}${vendDe(p) ? ` <span class="badge vend-badge">👤 ${esc(vendDe(p).nombre)}</span>` : ''}${p.estado === 'sena' && p.sena_pagada ? ' <span class="badge st-listo">Pagado</span>' : ''}</td><td class="tp-fecha">${fmtDate(p.fecha)}</td>
           <td class="tp-cli">${esc(p.cliente)}</td><td class="tp-det" style="white-space:normal;max-width:320px">${esc(itemsResumen(p).join(' · '))}</td>
           <td class="tp-est"><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num tp-tot">${money(p.total)}${(() => { const c = cuentaPedido(p); return c.cobrado > 0 && c.saldo > 0 ? `<small class="tp-saldo">falta ${money(c.saldo)}</small>` : (c.cobrado > 0 && !c.saldo ? '<small class="tp-saldo is-ok">pagado</small>' : ''); })()}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="box"><p class="empty">No hay pedidos en esta lista.</p></div>'}`;
@@ -1085,19 +1087,19 @@
     const pedidos = Store.data.pedidos;
     const entregados = pedidos.filter((p) => p.estado === 'entregado' && enRango(fechaCierre(p)));
     const cancelados = pedidos.filter((p) => p.estado === 'cancelado' && enRango(fechaCierre(p)));
-    let ventas = 0, cRem = 0, cDtf = 0, unidades = 0;
+    let ventas = 0, cRem = 0, cDtf = 0, unidades = 0, comis = 0;
     const porColor = {}, porTalle = {};
     entregados.forEach((p) => {
       const c = costoPedido(p);
-      ventas += Number(p.total) || 0; cRem += c.remeras; cDtf += c.dtf; unidades += c.unidades;
+      ventas += Number(p.total) || 0; cRem += c.remeras; cDtf += c.dtf; unidades += c.unidades; comis += comisionDe(p);
       (p.items || []).filter((it) => it.tipo !== 'dtf').forEach((it) => {
         porColor[it.color] = (porColor[it.color] || 0) + (Number(it.cantidad) || 1);
         porTalle[it.talle] = (porTalle[it.talle] || 0) + (Number(it.cantidad) || 1);
       });
     });
     const senasRetenidas = cancelados.filter((p) => p.sena_pagada).reduce((a, p) => a + (Number(p.sena) || 0), 0);
-    const ganancia = ventas - cRem - cDtf + senasRetenidas;
-    const margen = ventas ? Math.round((ventas - cRem - cDtf) / ventas * 100) : 0;
+    const rentabilidad = ventas - cRem - cDtf - comis + senasRetenidas;
+    const margen = ventas ? Math.round((ventas - cRem - cDtf - comis) / ventas * 100) : 0;
     // En curso (sin importar el período)
     const enProd = pedidos.filter((p) => p.estado === 'produccion' || p.estado === 'confirmado' || p.estado === 'nuevo');
     const listos = pedidos.filter((p) => p.estado === 'listo');
@@ -1110,7 +1112,7 @@
       const fin = porMes ? new Date(t.getFullYear(), t.getMonth() + 1, 1) : new Date(t.getTime() + 7 * 864e5);
       const ps = entregados.filter((p) => { const f = fechaCierre(p); return f >= t && f < fin && f < hasta; });
       const v = ps.reduce((a, p) => a + (Number(p.total) || 0), 0);
-      const g = ps.reduce((a, p) => a + (Number(p.total) || 0) - costoPedido(p).total, 0);
+      const g = ps.reduce((a, p) => a + (Number(p.total) || 0) - costoPedido(p).total - comisionDe(p), 0);
       grupos.push({ label: porMes ? t.toLocaleDateString('es-AR', { month: 'short' }) : `${t.getDate()}/${t.getMonth() + 1}`, v, g });
       t = fin;
     }
@@ -1119,16 +1121,16 @@
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const top = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
-    el.innerHTML = head('Resultados', 'Ventas, costos y ganancia de los pedidos entregados. Cada pedido cuenta el día que lo entregás.',
+    el.innerHTML = head('Resultados', 'Ventas, costos y rentabilidad de los pedidos entregados. Cada pedido cuenta el día que lo entregás.',
       `<button type="button" class="panel-btn" id="rs-csv" ${entregados.length ? '' : 'disabled'}>↓ Descargar planilla</button>`) + `
       <div class="tabs" role="group" aria-label="Período">${tipos.map(([k, l]) => `<button type="button" data-p="${k}" aria-pressed="${periodo.tipo === k}">${l}</button>`).join('')}</div>
       ${periodo.tipo === 'otro' ? `<div class="form-grid box" style="margin-bottom:14px"><label class="field"><span class="field-label">Desde</span><input type="date" id="rs-desde" value="${iso(desde)}"></label><label class="field"><span class="field-label">Hasta</span><input type="date" id="rs-hasta" value="${iso(new Date(hasta.getTime() - 864e5))}"></label></div>` : ''}
       <p class="field-help" style="margin:-4px 0 12px">Del ${fmtDate(desde)} al ${fmtDate(new Date(hasta.getTime() - 864e5))}</p>
       <div class="stats">
         <div class="stat"><small>Ventas</small><strong>${money(ventas)}</strong><span>${entregados.length} ${entregados.length === 1 ? 'pedido entregado' : 'pedidos entregados'}</span></div>
-        <div class="stat"><small>Ganancia</small><strong style="color:#1e7a3c">${money(ganancia)}</strong><span>margen ${margen} %</span></div>
+        <div class="stat"><small>Rentabilidad</small><strong style="color:#1e7a3c">${money(rentabilidad)}</strong><span>margen ${margen} %</span></div>
         <div class="stat"><small>Remeras vendidas</small><strong>${unidades}</strong><span>ticket promedio ${money(entregados.length ? ventas / entregados.length : 0)}</span></div>
-        <div class="stat"><small>Costos</small><strong>${money(cRem + cDtf)}</strong><span>remeras ${money(cRem)} · DTF ${money(cDtf)}</span></div>
+        <div class="stat"><small>Costos</small><strong>${money(cRem + cDtf + comis)}</strong><span>remeras ${money(cRem)} · DTF ${money(cDtf)}${comis ? ` · comisiones ${money(comis)}` : ''}</span></div>
       </div>
       <div class="grid-2">
         <section class="box"><h2>Cuentas del período</h2>
@@ -1136,20 +1138,21 @@
             <div><dt>Ventas (pedidos entregados)</dt><dd>${money(ventas)}</dd></div>
             <div><dt>Costo de las remeras lisas</dt><dd>− ${money(cRem)}</dd></div>
             <div><dt>Costo del film DTF</dt><dd>− ${money(cDtf)}</dd></div>
+            ${comis ? `<div><dt>Comisiones de vendedores</dt><dd>− ${money(comis)}</dd></div>` : ''}
             ${senasRetenidas ? `<div><dt>Señas de pedidos cancelados</dt><dd>+ ${money(senasRetenidas)}</dd></div>` : ''}
             <hr>
-            <div class="profit"><dt><b>Ganancia</b></dt><dd>${money(ganancia)}</dd></div>
+            <div class="profit"><dt><b>Rentabilidad</b></dt><dd>${money(rentabilidad)}</dd></div>
           </dl>
           <p class="field-help">El costo de las remeras sale de Modelos y precios, y el del DTF, del Cotizador. Queda guardado en cada pedido el día que se entrega, así un cambio de precios no altera los meses anteriores.</p>
         </section>
         <section class="box"><h2>${porMes ? 'Ventas por mes' : 'Ventas por semana'}</h2>
-          ${entregados.length ? `<div class="bars" role="img" aria-label="Ventas y ganancia por ${porMes ? 'mes' : 'semana'}">${grupos.map((g) => `
-            <div class="bar-col" title="${g.label}: ventas ${money(g.v)}, ganancia ${money(g.g)}">
+          ${entregados.length ? `<div class="bars" role="img" aria-label="Ventas y rentabilidad por ${porMes ? 'mes' : 'semana'}">${grupos.map((g) => `
+            <div class="bar-col" title="${g.label}: ventas ${money(g.v)}, rentabilidad ${money(g.g)}">
               <span class="bar-val">${g.v ? money(g.v).replace('$ ', '$') : ''}</span>
               <div class="bar-track"><i class="bar-v" style="height:${g.v / maxV * 100}%"></i><i class="bar-g" style="height:${Math.max(0, g.g) / maxV * 100}%"></i></div>
               <small>${g.label}</small>
             </div>`).join('')}</div>
-          <p class="legend"><span><i class="bar-v"></i>Ventas</span><span><i class="bar-g"></i>Ganancia</span></p>` : '<p class="empty">Todavía no hay pedidos entregados en este período.</p>'}
+          <p class="legend"><span><i class="bar-v"></i>Ventas</span><span><i class="bar-g"></i>Rentabilidad</span></p>` : '<p class="empty">Todavía no hay pedidos entregados en este período.</p>'}
         </section>
       </div>
       <div class="grid-2">
@@ -1170,8 +1173,8 @@
         </section>
       </div>
       <section class="box"><h2>Pedidos entregados</h2>
-        ${entregados.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Entregado</th><th>Cliente</th><th class="num">Venta</th><th class="num">Costo</th><th class="num">Ganancia</th></tr></thead><tbody>
-          ${entregados.slice().sort((a, b) => fechaCierre(b) - fechaCierre(a)).map((p) => { const c = costoPedido(p); return `<tr data-id="${p.id}" style="cursor:pointer"><td>#${p.numero || '–'}</td><td>${fmtDate(fechaCierre(p))}</td><td>${esc(p.cliente)}</td><td class="num">${money(p.total)}</td><td class="num">${money(c.total)}</td><td class="num"><b>${money(p.total - c.total)}</b></td></tr>`; }).join('')}
+        ${entregados.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Entregado</th><th>Cliente</th><th class="num">Venta</th><th class="num">Costo</th><th class="num">Rentabilidad</th></tr></thead><tbody>
+          ${entregados.slice().sort((a, b) => fechaCierre(b) - fechaCierre(a)).map((p) => { const c = costoPedido(p); return `<tr data-id="${p.id}" style="cursor:pointer"><td>#${p.numero || '–'}</td><td>${fmtDate(fechaCierre(p))}</td><td>${esc(p.cliente)}</td><td class="num">${money(p.total)}</td><td class="num">${money(c.total)}</td><td class="num"><b>${money(p.total - c.total - comisionDe(p))}</b></td></tr>`; }).join('')}
         </tbody></table></div>` : '<p class="empty">Cuando marques pedidos como «Entregado», aparecen acá.</p>'}
       </section>`;
 
@@ -1181,8 +1184,8 @@
     if (dH) dH.addEventListener('change', () => { periodo.hasta = dH.value; refresh(); });
     $$('tr[data-id]', el).forEach((tr) => tr.addEventListener('click', () => pedidoDetalle(tr.dataset.id)));
     $('#rs-csv', el).addEventListener('click', () => {
-      const filas = [['Numero', 'Entregado', 'Cliente', 'WhatsApp', 'Detalle', 'Venta', 'Costo remeras', 'Costo DTF', 'Ganancia']];
-      entregados.forEach((p) => { const c = costoPedido(p); filas.push([p.numero || '', fmtDate(fechaCierre(p)), p.cliente, p.telefono || '', itemsResumen(p).join(' | '), p.total, c.remeras, c.dtf, p.total - c.total]); });
+      const filas = [['Numero', 'Entregado', 'Cliente', 'WhatsApp', 'Detalle', 'Venta', 'Costo remeras', 'Costo DTF', 'Vendedor', 'Comision', 'Rentabilidad']];
+      entregados.forEach((p) => { const c = costoPedido(p); const v = vendDe(p); filas.push([p.numero || '', fmtDate(fechaCierre(p)), p.cliente, p.telefono || '', itemsResumen(p).join(' | '), p.total, c.remeras, c.dtf, v ? v.nombre : '', comisionDe(p), p.total - c.total - comisionDe(p)]); });
       const csv = '﻿' + filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
       downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `resultados-${iso(desde)}-a-${iso(new Date(hasta.getTime() - 864e5))}.csv`);
     });
@@ -1197,6 +1200,162 @@
     if (p.estado === 'listo') return { estado: 'entregado', label: '✓ Entregado' };
     return null;
   }
+  /* =========================================================
+     VENDEDORES: cada uno con su link y su comisión (sale de la
+     rentabilidad). El pedido guarda en su historial qué vendedor
+     lo trajo: { tipo: 'vendedor', codigo, nombre, nivel, pct, pagada }.
+     ========================================================= */
+  const NIVELES = { venta: 'Solo venta', entrega: 'Venta con entrega' };
+  const vendedores = () => ((Store.data.config.vendedores || {}).lista || []);
+  const vendDe = (p) => (p.historial || []).slice().reverse().find((h) => h.tipo === 'vendedor') || null;
+  const comisionDe = (p) => {
+    const v = vendDe(p);
+    return v && p.estado !== 'cancelado' ? Math.round((Number(p.total) || 0) * (Number(v.pct) || 0) / 100) : 0;
+  };
+  const linkVendedor = (s, paraCliente) => `${location.origin}/tienda/index.html?${paraCliente ? 'r' : 'v'}=${s.codigo}`;
+  async function guardarVendedores(lista) { await Store.setConfig('vendedores', { ...(Store.data.config.vendedores || {}), lista }); }
+  /* Asigna (o quita) el vendedor de un pedido y su nivel de comisión */
+  async function asignarVendedor(id, codigo, nivel) {
+    const p = Store.data.pedidos.find((x) => x.id === id);
+    const prev = vendDe(p);
+    const hist = (p.historial || []).filter((h) => h.tipo !== 'vendedor');
+    if (codigo) {
+      const s = vendedores().find((x) => x.codigo === codigo);
+      const mismo = prev && prev.codigo === codigo;
+      const pct = s ? Number(nivel === 'entrega' ? s.pctEntrega : s.pctVenta) || 0 : (mismo ? prev.pct : 0);
+      hist.push({ tipo: 'vendedor', codigo, nombre: s ? s.nombre : (prev && prev.nombre) || codigo, nivel, pct, fecha: mismo ? prev.fecha : new Date().toISOString(), pagada: mismo ? prev.pagada || null : null });
+    }
+    await Store.save('pedidos', { ...p, historial: hist });
+  }
+  async function marcarComision(id, pagada) {
+    const p = Store.data.pedidos.find((x) => x.id === id);
+    const hist = (p.historial || []).map((h) => (h.tipo === 'vendedor' ? { ...h, pagada: pagada ? new Date().toISOString() : null } : h));
+    await Store.save('pedidos', { ...p, historial: hist });
+  }
+  /* Mensaje para mandarle al vendedor su link y sus condiciones */
+  const mensajeVendedor = (s) => [
+    `¡Hola ${s.nombre}! Este es tu link de vendedor de Tu Estampa SF:`,
+    linkVendedor(s),
+    '',
+    'Con ese link cargás los pedidos de tus clientes (es la misma tienda: elegís la remera, subís el diseño y ves cómo queda) y te quedan a tu nombre. También ves qué colores y talles hay.',
+    `Si preferís que el cliente lo haga solo, pasale este otro: ${linkVendedor(s, true)}`,
+    '',
+    '*Tus condiciones:*',
+    `• Solo venta (conseguís el cliente; yo cobro y entrego): ${num(s.pctVenta, 1)} % del pedido.`,
+    `• Venta con entrega (además cobrás y entregás vos): ${num(s.pctEntrega, 1)} % del pedido.`,
+    'La comisión se paga cuando el pedido está entregado.',
+  ].join('\n');
+
+  function vendedorForm(s = null) {
+    openModal(s ? `Editar a ${s.nombre}` : 'Nuevo vendedor', `
+      <form class="form-grid" id="vf">
+        <label class="field"><span class="field-label">Nombre</span><input type="text" id="vf-nom" maxlength="40" required value="${esc(s ? s.nombre : '')}"></label>
+        <label class="field"><span class="field-label">WhatsApp</span><input type="tel" id="vf-tel" maxlength="30" placeholder="342 4123456" value="${esc(s ? s.telefono || '' : '')}"></label>
+        <label class="field"><span class="field-label">Solo venta (%)</span><input type="number" id="vf-pv" min="0" max="50" step="0.5" value="${s ? s.pctVenta : 10}"></label>
+        <label class="field"><span class="field-label">Venta con entrega (%)</span><input type="number" id="vf-pe" min="0" max="50" step="0.5" value="${s ? s.pctEntrega : 15}"></label>
+        ${s ? `<label class="check full"><input type="checkbox" id="vf-act" ${s.activo !== false ? 'checked' : ''}> Activo (si lo desactivás, su link deja de funcionar)</label>` : ''}
+        <p class="field-help full">La comisión es un porcentaje del total del pedido y sale de tu rentabilidad: el cliente paga el precio de siempre. Si cambiás el porcentaje, se aplica a los pedidos nuevos.</p>
+      </form>
+      <div class="row-actions"><button type="button" class="panel-btn" data-close>Cancelar</button><button type="button" class="download" id="vf-ok">Guardar</button></div>`, (body) => {
+      $('#vf-ok', body).addEventListener('click', async () => {
+        const nombre = $('#vf-nom', body).value.trim();
+        if (!nombre) { $('#vf-nom', body).focus(); toast('Poné el nombre del vendedor.', true); return; }
+        const pct = (sel) => clamp(Math.round((Number($(sel, body).value) || 0) * 2) / 2, 0, 50);
+        const datos = { nombre: nombre.slice(0, 40), telefono: $('#vf-tel', body).value.trim(), pctVenta: pct('#vf-pv'), pctEntrega: pct('#vf-pe') };
+        let lista = vendedores().slice();
+        if (s) lista = lista.map((x) => (x.codigo === s.codigo ? { ...x, ...datos, activo: $('#vf-act', body).checked } : x));
+        else {
+          // Código del link: letras y números al azar, difícil de adivinar
+          let codigo;
+          do { codigo = Array.from(crypto.getRandomValues(new Uint8Array(7)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join(''); } while (lista.some((x) => x.codigo === codigo));
+          lista.push({ codigo, ...datos, activo: true, alta: new Date().toISOString() });
+        }
+        await guardarVendedores(lista);
+        closeModal();
+        toast(s ? 'Vendedor actualizado.' : `Listo: ${nombre} ya tiene su link.`);
+        refresh();
+      });
+    });
+  }
+
+  let vendPeriodo = 'mes', vendFiltro = '';
+  function renderVendedores(el) {
+    const lista = vendedores();
+    const hoy = new Date();
+    const rangos = { mes: [new Date(hoy.getFullYear(), hoy.getMonth(), 1), null], 'mes-pasado': [new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1), new Date(hoy.getFullYear(), hoy.getMonth(), 1)], todo: [null, null] };
+    const [desde, hasta] = rangos[vendPeriodo];
+    const enRango = (p) => { const f = new Date(p.fecha); return (!desde || f >= desde) && (!hasta || f < hasta); };
+    const conVend = Store.data.pedidos.filter((p) => vendDe(p) && p.estado !== 'cancelado' && enRango(p)).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    const resumen = (codigo) => {
+      const ps = conVend.filter((p) => vendDe(p).codigo === codigo);
+      const ent = ps.filter((p) => p.estado === 'entregado');
+      return {
+        pedidos: ps.length, ventas: ps.reduce((a, p) => a + (Number(p.total) || 0), 0),
+        comision: ps.reduce((a, p) => a + comisionDe(p), 0),
+        pagada: ps.filter((p) => vendDe(p).pagada).reduce((a, p) => a + comisionDe(p), 0),
+        aPagar: ent.filter((p) => !vendDe(p).pagada).reduce((a, p) => a + comisionDe(p), 0),
+        enCurso: ps.filter((p) => p.estado !== 'entregado').reduce((a, p) => a + comisionDe(p), 0),
+        pendientes: ent.filter((p) => !vendDe(p).pagada),
+      };
+    };
+    const filas = conVend.filter((p) => !vendFiltro || vendDe(p).codigo === vendFiltro);
+    el.innerHTML = head('Vendedores', 'Cada vendedor tiene su link: los pedidos que carga (o que hacen sus clientes) te llegan a su nombre, con la comisión calculada. La comisión sale de tu rentabilidad.',
+      '<button type="button" class="panel-btn primary" data-act="new">＋ Nuevo vendedor</button>') + `
+      <div class="tabs" role="group" aria-label="Período">${[['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'], ['todo', 'Todo']].map(([k, l]) => `<button type="button" data-p="${k}" aria-pressed="${vendPeriodo === k}">${l}</button>`).join('')}</div>
+      ${lista.length ? `<div class="vend-grid">${lista.map((s) => { const r = resumen(s.codigo); return `
+        <section class="box vend-card ${s.activo === false ? 'is-off' : ''}">
+          <div class="vend-head"><h2>${esc(s.nombre)}</h2>${s.activo === false ? '<span class="badge st-cancelado">Inactivo</span>' : ''}</div>
+          <p class="field-help">Solo venta <b>${num(s.pctVenta, 1)} %</b> · Con entrega <b>${num(s.pctEntrega, 1)} %</b>${s.telefono ? ` · ${esc(s.telefono)}` : ''}</p>
+          <dl class="breakdown">
+            <div><dt>Pedidos</dt><dd>${r.pedidos} · ${money(r.ventas)}</dd></div>
+            <div><dt>Comisión del período</dt><dd>${money(r.comision)}</dd></div>
+            <div><dt>Ya pagada</dt><dd>${money(r.pagada)}</dd></div>
+            <div><dt>En pedidos sin entregar</dt><dd>${money(r.enCurso)}</dd></div>
+            <div class="profit"><dt><b>A pagarle (entregados)</b></dt><dd>${money(r.aPagar)}</dd></div>
+          </dl>
+          <div class="row-actions" style="justify-content:flex-start">
+            ${r.aPagar ? `<button type="button" class="panel-btn primary" data-pagar="${s.codigo}">✓ Pagarle ${money(r.aPagar)}</button>` : ''}
+            <button type="button" class="panel-btn" data-wa="${s.codigo}" ${s.telefono ? '' : 'disabled title="Cargale el WhatsApp"'}>Enviarle su link</button>
+            <button type="button" class="panel-btn" data-copy="${s.codigo}">⧉ Copiar link</button>
+            <button type="button" class="panel-btn" data-edit="${s.codigo}">✎ Editar</button>
+          </div>
+        </section>`; }).join('')}</div>` : '<section class="box"><p class="empty">Todavía no cargaste vendedores. Tocá «＋ Nuevo vendedor»: le ponés el nombre y el porcentaje, y el panel arma su link para mandárselo por WhatsApp.</p></section>'}
+      ${lista.length ? `<section class="box"><div class="vend-head"><h2>Pedidos con vendedor</h2>
+          <select id="vd-filtro" aria-label="Filtrar por vendedor"><option value="">Todos los vendedores</option>${lista.map((s) => `<option value="${s.codigo}" ${vendFiltro === s.codigo ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select></div>
+        ${filas.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Fecha</th><th>Vendedor</th><th>Cliente</th><th>Estado</th><th class="num">Venta</th><th>Tipo</th><th class="num">Comisión</th><th></th></tr></thead><tbody>
+          ${filas.map((p) => { const v = vendDe(p); return `<tr><td><a href="#" data-ped="${p.id}">#${p.numero || '–'}</a></td><td>${fmtDate(p.fecha)}</td><td>${esc(v.nombre)}</td><td>${esc(p.cliente)}</td>
+            <td><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span></td><td class="num">${money(p.total)}</td>
+            <td><select data-nivel="${p.id}" aria-label="Tipo de venta">${Object.entries(NIVELES).map(([k, l]) => `<option value="${k}" ${v.nivel === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+            <td class="num"><b>${money(comisionDe(p))}</b><small class="field-help"> ${num(v.pct, 1)} %</small></td>
+            <td>${v.pagada ? `<button type="button" class="panel-btn" data-despagar="${p.id}" title="Tocá para desmarcar">✓ Pagada ${fmtDate(v.pagada)}</button>` : (p.estado === 'entregado' ? `<button type="button" class="panel-btn" data-pagada="${p.id}">Marcar pagada</button>` : '<span class="field-help">al entregar</span>')}</td></tr>`; }).join('')}
+        </tbody></table></div>` : '<p class="empty">No hay pedidos con vendedor en este período.</p>'}
+      </section>` : ''}`;
+    el.querySelector('[data-act="new"]').addEventListener('click', () => vendedorForm());
+    $$('.tabs [data-p]', el).forEach((b) => b.addEventListener('click', () => { vendPeriodo = b.dataset.p; refresh(); }));
+    const f = $('#vd-filtro', el);
+    if (f) f.addEventListener('change', () => { vendFiltro = f.value; refresh(); });
+    const sDe = (c) => lista.find((s) => s.codigo === c);
+    $$('[data-edit]', el).forEach((b) => b.addEventListener('click', () => vendedorForm(sDe(b.dataset.edit))));
+    $$('[data-copy]', el).forEach((b) => b.addEventListener('click', async () => {
+      const t = linkVendedor(sDe(b.dataset.copy));
+      try { await navigator.clipboard.writeText(t); toast('Link del vendedor copiado.'); } catch (e) { prompt('Copiá el link:', t); }
+    }));
+    $$('[data-wa]', el).forEach((b) => b.addEventListener('click', () => { const s = sDe(b.dataset.wa); const l = waLink(s.telefono, mensajeVendedor(s)); if (l) window.open(l, '_blank', 'noopener'); }));
+    $$('[data-pagar]', el).forEach((b) => b.addEventListener('click', async () => {
+      const s = sDe(b.dataset.pagar), r = resumen(s.codigo);
+      if (!confirm(`¿Marcar como pagada la comisión de ${r.pendientes.length} ${r.pendientes.length === 1 ? 'pedido' : 'pedidos'} (${money(r.aPagar)}) a ${s.nombre}?`)) return;
+      for (const p of r.pendientes) await marcarComision(p.id, true);
+      toast(`Comisión de ${s.nombre} marcada como pagada.`);
+      const l = s.telefono && waLink(s.telefono, `¡Hola ${s.nombre}! Te pagué la comisión de ${r.pendientes.length} ${r.pendientes.length === 1 ? 'pedido' : 'pedidos'}: ${money(r.aPagar)}.\n${r.pendientes.map((p) => `• #${p.numero || ''} ${p.cliente}: ${money(comisionDe(p))}`).join('\n')}\n¡Gracias!`);
+      refresh();
+      if (l && confirm('¿Le mandás el detalle por WhatsApp?')) window.open(l, '_blank', 'noopener');
+    }));
+    $$('[data-pagada]', el).forEach((b) => b.addEventListener('click', async () => { await marcarComision(b.dataset.pagada, true); refresh(); }));
+    $$('[data-despagar]', el).forEach((b) => b.addEventListener('click', async () => { if (confirm('¿Desmarcar esta comisión como pagada?')) { await marcarComision(b.dataset.despagar, false); refresh(); } }));
+    $$('[data-nivel]', el).forEach((s) => s.addEventListener('change', async () => { const p = Store.data.pedidos.find((x) => x.id === s.dataset.nivel); await asignarVendedor(p.id, vendDe(p).codigo, s.value); refresh(); }));
+    $$('[data-ped]', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); pedidoDetalle(a.dataset.ped); }));
+  }
+
   /* =========================================================
      COBROS: pagos parciales de un pedido (seña + pagos sueltos).
      Se guardan en el historial del pedido como { tipo: 'cobro' }.
@@ -1241,6 +1400,14 @@
     openModal(`Pedido #${p.numero || '–'} · ${p.cliente}`, `
       <p><span class="badge st-${p.estado}">${estadoLabel(p.estado)}</span> · ${fmtDateTime(p.fecha)} · ${p.origen === 'tienda' ? 'Tienda online' : 'Cargado en el panel'}</p>
       <ul class="order-items">${itemsResumen(p).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+      ${(() => {
+        const v = vendDe(p), lista = vendedores().filter((s) => s.activo !== false || (v && s.codigo === v.codigo));
+        if (!lista.length && !v) return '';
+        return `<div class="vend-row"><span>Vendedor</span>
+          <select id="pd-vend" aria-label="Vendedor"><option value="">Ninguno</option>${lista.map((s) => `<option value="${s.codigo}" ${v && v.codigo === s.codigo ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}${v && !lista.some((s) => s.codigo === v.codigo) ? `<option value="${v.codigo}" selected>${esc(v.nombre)}</option>` : ''}</select>
+          <select id="pd-nivel" aria-label="Tipo de venta" ${v ? '' : 'hidden'}>${Object.entries(NIVELES).map(([k, l]) => `<option value="${k}" ${v && v.nivel === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          ${v ? `<b>Comisión ${money(comisionDe(p))}</b><small>(${num(v.pct, 1)} %${v.pagada ? ` · pagada el ${fmtDate(v.pagada)}` : ''})</small>` : ''}</div>`;
+      })()}
       ${(() => {
         if (p.stock_descontado || ['entregado', 'cancelado'].includes(p.estado)) return '';
         const sinStock = faltantes().filter((r) => r.faltan > 0 && r.pedidos.includes(p));
@@ -1289,6 +1456,11 @@
         pedidoDetalle(id);
       });
       $('#pd-edit', body).addEventListener('click', () => pedidoForm({}, id));
+      // Vendedor del pedido
+      const pv = $('#pd-vend', body), pn = $('#pd-nivel', body);
+      const cambioVend = async () => { await asignarVendedor(id, pv.value, pn ? pn.value : 'venta'); refresh(); pedidoDetalle(id); };
+      if (pv) pv.addEventListener('change', cambioVend);
+      if (pn) pn.addEventListener('change', cambioVend);
       // Pagos parciales
       const fc = $('#pd-cobro', body);
       if (fc) fc.addEventListener('submit', async (e) => {
@@ -2126,13 +2298,13 @@
     el.innerHTML = head('Cotizador DTF', 'Precio de la remera + cada estampa según sus centímetros cuadrados. Ajustá tus costos abajo y se recalcula solo.') + `
       <div class="quote">
         <div style="display:grid;gap:14px">
-          <details class="box" id="q-cfg" open><summary><b>Precios de las estampas: tus costos y ganancia</b></summary>
+          <details class="box" id="q-cfg" open><summary><b>Precios de las estampas: tus costos y rentabilidad</b></summary>
             <p class="field-help" style="margin-top:6px">Estos valores los usa también la tienda online. Los cambios se guardan solos.</p>
             <div class="form-grid" style="margin-top:10px">
               <label class="field"><span class="field-label">Precio del metro de DTF ($)</span><input type="number" data-c="metro" min="0" step="100" value="${cfg.metro}"></label>
               <label class="field"><span class="field-label">Ancho del rollo (cm)</span><input type="number" data-c="ancho" min="10" step="1" value="${cfg.ancho}"></label>
               <label class="field"><span class="field-label">Merma por separaciones (%)</span><input type="number" data-c="merma" min="0" max="100" value="${cfg.merma}"></label>
-              <label class="field"><span class="field-label">Ganancia sobre el DTF (%)</span><input type="number" data-c="ganancia" min="0" max="2000" value="${cfg.ganancia}"></label>
+              <label class="field"><span class="field-label">Rentabilidad sobre el DTF (%)</span><input type="number" data-c="ganancia" min="0" max="2000" value="${cfg.ganancia}"></label>
               <label class="field"><span class="field-label">Fijo por estampa ($)</span><input type="number" data-c="fijo" min="0" step="100" value="${cfg.fijo}"></label>
               <label class="field"><span class="field-label">Armado del diseño ($)</span><input type="number" data-c="diseno" min="0" step="100" value="${cfg.diseno}"></label>
               <label class="field"><span class="field-label">Redondear a ($)</span><select data-c="redondeo">${[1, 100, 500, 1000].map((r) => `<option value="${r}" ${r === cfg.redondeo ? 'selected' : ''}>${r === 1 ? 'Sin redondeo' : money(r)}</option>`).join('')}</select></label>
@@ -2227,7 +2399,7 @@
           <hr>
           <div><dt>Costo remeras</dt><dd>− ${money(r.costoRemeras)}</dd></div>
           <div><dt>Costo DTF</dt><dd>− ${money(r.costoDtf)}</dd></div>
-          <div class="profit"><dt><b>Tu ganancia</b></dt><dd>${money(r.ganancia)}</dd></div>
+          <div class="profit"><dt><b>Tu rentabilidad</b></dt><dd>${money(r.ganancia)}</dd></div>
         </dl>
         <p class="field-help">DTF: te cuesta ${money(r.costoCm2 * 100)} cada 100 cm² (${num(r.costoCm2)} $/cm²) y lo cobrás ${num(r.precioCm2)} $/cm² + ${money(cotizador().fijo)} por estampa.</p>
         <div class="row-actions" style="justify-content:stretch"><button type="button" class="panel-btn" id="q-wa">Copiar para WhatsApp</button><button type="button" class="download" id="q-ped">Crear pedido</button></div>`;
@@ -2287,7 +2459,7 @@
           <dl class="breakdown">
             <div><dt>Costo</dt><dd>${money(m.costo)}</dd></div>
             <div><dt>Precio base (sin estampa)</dt><dd>${money(m.precio)}</dd></div>
-            <div class="profit"><dt>Ganancia por remera</dt><dd>${money(m.precio - m.costo)} (${margen} %)</dd></div>
+            <div class="profit"><dt>Rentabilidad por remera</dt><dd>${money(m.precio - m.costo)} (${margen} %)</dd></div>
             <div><dt>En stock</dt><dd>${stock} u.</dd></div>
           </dl>
           <p class="chip-list" style="margin:10px 0">${m.colores.map((c) => `<span class="color-name" style="font-size:12px"><i style="background:${c.hex}"></i>${esc(c.nombre)}</span>`).join(' ')}</p>

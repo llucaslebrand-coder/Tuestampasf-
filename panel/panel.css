@@ -346,3 +346,15 @@ html, body { overflow-x: clip; }
 .cu-layout { display: grid; gap: 14px; }
 .cu-layout .lbl-preview { position: static; }
 .cu-layout .cu-scroll { max-height: 75vh; }
+
+/* Vendedores */
+.vend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.vend-card.is-off { opacity: .6; }
+.vend-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.vend-head h2 { margin: 0; }
+.vend-head select { height: 38px; }
+.vend-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 10px 0; padding: 10px 12px; border: 1px solid #d6e2f5; border-radius: 12px; background: #f3f7fe; font-size: 14px; }
+.vend-row > span { font-weight: 800; color: #1b2a6e; }
+.vend-row select { height: 36px; }
+.vend-row small { color: #5b6478; }
+.vend-badge { background: #e8eefc; color: #1b2a6e; }

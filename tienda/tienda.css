@@ -239,3 +239,14 @@ body.shop { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
   .shop-main { padding-top: 12px; }
   .buybar .download { min-width: 120px; padding: 0 16px; }
 }
+
+/* Modo vendedor */
+.vend-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid #b9d2f5; border-radius: 14px; background: #eaf3ff; color: #12366e; font-size: 14px; line-height: 1.4; }
+.vend-bar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.vend-bar .panel-btn { display: inline-flex; align-items: center; width: auto; min-height: 36px; padding: 6px 12px; font-size: 13px; text-decoration: none; }
+.sizes button small { display: block; margin-top: 1px; font-size: 10px; font-weight: 700; line-height: 1; opacity: .85; }
+.sizes button.st-sin:not(.has-qty) { color: #9aa1b1; background: repeating-linear-gradient(135deg, #fff 0 6px, #f2f3f6 6px 12px); }
+.sizes button.st-pocas small { color: #a35b00; }
+.sizes button.has-qty small { color: inherit; }
+.vend-check { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fd; font-size: 14px; }
+.vend-check input { width: 20px; height: 20px; margin-top: 1px; }
