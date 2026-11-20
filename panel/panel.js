@@ -2645,6 +2645,8 @@
           <div class="grid-2" style="gap:10px">
             <label class="field"><span class="field-label">Alias para la seña</span><input type="text" id="aj-alias" placeholder="Ej.: tuestampasf" value="${esc(tienda.alias ?? 'tuestampasf')}"></label>
             <label class="field"><span class="field-label">Seña ($)</span><input type="number" id="aj-sena" min="0" step="500" value="${esc(tienda.sena ?? 10000)}"></label>
+            <label class="field"><span class="field-label">CBU o CVU (opcional)</span><input type="text" id="aj-cbu" inputmode="numeric" maxlength="22" placeholder="22 números" value="${esc(tienda.cbu || '')}"></label>
+            <label class="field"><span class="field-label">Titular de la cuenta (opcional)</span><input type="text" id="aj-tit" maxlength="60" placeholder="Ej.: Lucas Lebrand" value="${esc(tienda.titular || '')}"></label>
           </div>
           <label class="check" style="margin-top:8px"><input type="checkbox" id="aj-mp" ${tienda.mp ? 'checked' : ''}> Cobrar también con <b>Mercado Pago</b></label>
           <label class="field" style="margin-top:6px"><span class="field-label">Costo de Mercado Pago que paga el cliente (%)</span><input type="number" id="aj-mp-rec" min="0" max="30" step="0.01" value="${esc(tienda.mpRecargo ?? 7.61)}"></label>
@@ -2667,7 +2669,7 @@
         </section>
       </div>`;
     $('#aj-wa-save', el).addEventListener('click', async () => {
-      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0), mp: $('#aj-mp', el).checked, mpRecargo: Math.min(30, Math.max(0, Number($('#aj-mp-rec', el).value) || 0)) });
+      await Store.setConfig('tienda', { ...tienda, whatsapp: $('#aj-wa', el).value.trim(), alias: $('#aj-alias', el).value.trim(), cbu: $('#aj-cbu', el).value.replace(/\D/g, '').slice(0, 22), titular: $('#aj-tit', el).value.trim(), sena: Math.max(0, Number($('#aj-sena', el).value) || 0), mp: $('#aj-mp', el).checked, mpRecargo: Math.min(30, Math.max(0, Number($('#aj-mp-rec', el).value) || 0)) });
       toast('Datos de la tienda guardados.');
     });
     // Ejemplo en vivo del recargo de Mercado Pago

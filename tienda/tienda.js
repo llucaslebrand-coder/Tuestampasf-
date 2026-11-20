@@ -1016,15 +1016,15 @@
     localStorage.setItem('te_panel_data_v1', JSON.stringify(d));
   }
 
-  function resumenTexto(p) {
-    const it = p.items[0];
-    const lines = [`¡Hola! Hice un pedido en la tienda (código ${p.id.slice(-6).toUpperCase()}):`];
+  /* Renglones del pedido para los mensajes de WhatsApp */
+  function detallePedido(p) {
+    const lines = [];
     p.items.forEach((x) => lines.push(`• ${x.cantidad} × ${modeloActual().nombre} ${x.color}, talle ${x.talle}`));
-    it.estampas.forEach((e) => lines.push(`• Estampa ${e.zona.toLowerCase()} ${cmTxt(e.ancho)} × ${cmTxt(e.alto)} cm`));
-    lines.push(`Total: ${money(p.total)}`);
-    if (p.sena) lines.push(`Te mando el comprobante de la seña de ${money(p.sena)}.`);
-    lines.push(`Soy ${p.cliente}.`);
-    return lines.join('\n');
+    p.items[0].estampas.forEach((e) => lines.push(`• Estampa ${e.zona.toLowerCase()} ${cmTxt(e.ancho)} × ${cmTxt(e.alto)} cm`));
+    return lines;
+  }
+  function resumenTexto(p) {
+    return [`¡Hola! Hice un pedido en la tienda (código ${p.id.slice(-6).toUpperCase()}):`, ...detallePedido(p), `Total: ${money(p.total)}`, `Soy ${p.cliente}.`].join('\n');
   }
 
   function mostrarConfirmacion(p, trampa = false) {
@@ -1033,30 +1033,17 @@
     const alias = aliasPago();
     $('#ok-title').textContent = p.sena ? '¡Pedido reservado!' : '¡Pedido enviado!';
     $('#ok-text').innerHTML = p.sena
-      ? `Gracias, ${esc(p.cliente)}. Tu pedido <b>${codigo}</b> por <b>${money(p.total)}</b> queda reservado. Para <b>confirmarlo</b>, transferí la seña y mandanos el comprobante por WhatsApp.${modo === 'demo' && !trampa ? '<br><small>(Modo demo: el pedido quedó en el panel de este dispositivo.)</small>' : ''}`
+      ? `Gracias, ${esc(p.cliente)}. Tu pedido <b>${codigo}</b> por <b>${money(p.total)}</b> queda reservado. Para <b>confirmarlo</b> falta la seña.${modo === 'demo' && !trampa ? '<br><small>(Modo demo: el pedido quedó en el panel de este dispositivo.)</small>' : ''}`
       : `Gracias, ${esc(p.cliente)}. Recibimos tu pedido <b>${codigo}</b> por <b>${money(p.total)}</b>. Te escribimos por WhatsApp para confirmar el pago y la entrega.`;
     const pay = $('#ok-pay');
     pay.hidden = !p.sena;
     if (p.sena) {
-      $('#ok-sena').textContent = money(p.sena);
-      $('#ok-alias').textContent = alias || 'te lo pasamos por WhatsApp';
-      $('#ok-copy').hidden = !alias;
-      $('#ok-vence').textContent = `Si no recibimos la seña en ${VENCE_DIAS} días, el pedido se cancela solo. El resto (${money(p.total - p.sena)}) se paga al retirar.`;
-      // Mercado Pago (si el dueño lo activó en el panel y la web está publicada)
-      const mp = !trampa && window.TEPago && TEPago.disponible(negocio) && modo === 'nube';
-      $('#ok-mp').hidden = !mp;
-      $('#ok-or').hidden = !mp;
-      // Botón con el monto exacto (con el costo de Mercado Pago si está configurado)
-      const montoMP = TEPago.montoConRecargo(p.sena, negocio);
-      const etiquetaMP = `Pagar ${money(montoMP)} con Mercado Pago`;
-      $('#ok-mp').textContent = etiquetaMP;
-      $('#ok-mp-nota').hidden = !mp || montoMP <= p.sena;
-      $('#ok-mp-nota').textContent = 'Incluye el costo del servicio de Mercado Pago. Por transferencia pagás el precio sin recargo.';
-      $('#ok-mp').onclick = async () => {
-        $('#ok-mp').disabled = true;
-        $('#ok-mp').textContent = 'Abriendo Mercado Pago…';
-        try { await TEPago.iniciar(p.id); } catch (e) { toast(`No se pudo abrir Mercado Pago (${e.message}). Probá de nuevo o pagá por transferencia.`); $('#ok-mp').disabled = false; $('#ok-mp').textContent = etiquetaMP; }
-      };
+      TEPago.pantallaSena(pay, {
+        pedido: p, negocio, alias, cbu: negocio.cbu || '', titular: negocio.titular || '',
+        mp: !trampa && TEPago.disponible(negocio) && modo === 'nube',
+        whatsapp: trampa ? '' : whatsappNegocio(), detalle: detallePedido(p), toast,
+        vence: `Si no recibimos la seña en ${VENCE_DIAS} días, el pedido se cancela solo. El resto (${money(p.total - p.sena)}) se paga al retirar.`,
+      });
     }
     const box = $('#ok-mocks');
     box.innerHTML = '';
@@ -1067,11 +1054,12 @@
     img.setAttribute('aria-label', 'Tu remera terminada');
     f.appendChild(img);
     box.appendChild(f);
+    // Con seña, los botones de WhatsApp están en las opciones de pago (comprobante o consulta)
     const wa = whatsappNegocio();
     const link = $('#ok-wa');
-    link.hidden = !wa;
+    link.hidden = !wa || !!p.sena;
     if (wa) link.href = `https://wa.me/${wa}?text=${encodeURIComponent(trampa ? '¡Hola!' : resumenTexto(p))}`;
-    link.textContent = p.sena ? 'Enviar comprobante por WhatsApp' : 'Avisar por WhatsApp';
+    link.textContent = 'Avisar por WhatsApp';
   }
 
   /* =========================================================
@@ -1169,9 +1157,6 @@
       else if (s === st.step + 1) next();
     }));
     $('#order-form').addEventListener('submit', (e) => { e.preventDefault(); enviarPedido(); });
-    $('#ok-copy').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(aliasPago()); toast('Alias copiado: ' + aliasPago()); } catch (e) { toast('Alias: ' + aliasPago()); }
-    });
     $('#ok-new').addEventListener('click', () => { st.designs = { frente: [], espalda: [], manga: [] }; st.sel = { frente: null, espalda: null, manga: null }; st.side = 'frente'; goStep(1); });
     $('#ok-dl').addEventListener('click', async () => {
       await fotosListas();

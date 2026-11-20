@@ -443,35 +443,20 @@
     const codigo = p.id.slice(-6).toUpperCase();
     const que = it.modo === 'sueltas' ? `pedido de <b>${it.layout.length} ${it.layout.length === 1 ? 'estampa DTF' : 'estampas DTF'}</b>` : `lienzo DTF <b>${cm(it.ancho)} × ${cm(it.largo)} cm</b>`;
     $('#ok-text').innerHTML = `Gracias, ${esc(p.cliente)}. Tu ${que} (pedido <b>${codigo}</b>) por <b>${money(p.total)}</b> queda reservado.${p.sena ? ' Para <b>confirmarlo</b>, pagá la seña.' : ''}${modo === 'demo' ? '<br><small>(Modo demo: el pedido quedó en el panel de este dispositivo.)</small>' : ''}`;
+    const detalle = [it.modo === 'sueltas' ? `• ${it.layout.length} estampas DTF sueltas` : `• Lienzo DTF ${cm(it.ancho)} × ${cm(it.largo)} cm con ${it.layout.length} ${it.layout.length === 1 ? 'copia' : 'copias'}`];
     $('#ok-pay').hidden = !p.sena;
     if (p.sena) {
-      $('#ok-sena').textContent = money(p.sena);
-      $('#ok-alias').textContent = aliasPago() || 'te lo pasamos por WhatsApp';
-      $('#ok-copy').hidden = !aliasPago();
-      $('#ok-vence').textContent = `Si no recibimos la seña en 3 días, el pedido se cancela solo. El resto (${money(p.total - p.sena)}) se paga al retirar.`;
-      const mp = TEPago.disponible(negocio) && modo === 'nube';
-      $('#ok-mp').hidden = !mp;
-      $('#ok-or').hidden = !mp;
-      // Botón con el monto exacto (con el costo de Mercado Pago si está configurado)
-      const montoMP = TEPago.montoConRecargo(p.sena, negocio);
-      const etiquetaMP = `Pagar ${money(montoMP)} con Mercado Pago`;
-      $('#ok-mp').textContent = etiquetaMP;
-      $('#ok-mp-nota').hidden = !mp || montoMP <= p.sena;
-      $('#ok-mp-nota').textContent = 'Incluye el costo del servicio de Mercado Pago. Por transferencia pagás el precio sin recargo.';
-      $('#ok-mp').onclick = async () => {
-        $('#ok-mp').disabled = true;
-        $('#ok-mp').textContent = 'Abriendo Mercado Pago…';
-        try { await TEPago.iniciar(p.id); } catch (e) { toast(`No se pudo abrir Mercado Pago (${e.message}). Probá de nuevo o pagá por transferencia.`); $('#ok-mp').disabled = false; $('#ok-mp').textContent = etiquetaMP; }
-      };
+      TEPago.pantallaSena($('#ok-pay'), {
+        pedido: p, negocio, alias: aliasPago(), cbu: negocio.cbu || '', titular: negocio.titular || '',
+        mp: TEPago.disponible(negocio) && modo === 'nube', whatsapp: whatsappNegocio(), detalle, toast,
+        vence: `Si no recibimos la seña en 3 días, el pedido se cancela solo. El resto (${money(p.total - p.sena)}) se paga al retirar.`,
+      });
     }
     $('#ok-img').src = vista.toDataURL('image/jpeg', 0.8);
     const wa = whatsappNegocio();
     const link = $('#ok-wa');
-    link.hidden = !wa;
-    const lineas = [`¡Hola! Hice un pedido de DTF en la web (código ${codigo}):`, it.modo === 'sueltas' ? `• ${it.layout.length} estampas DTF sueltas` : `• Lienzo ${cm(it.ancho)} × ${cm(it.largo)} cm con ${it.layout.length} ${it.layout.length === 1 ? 'copia' : 'copias'}`, `Total: ${money(p.total)}`];
-    if (p.sena) lineas.push(`Te mando el comprobante de la seña de ${money(p.sena)}.`);
-    lineas.push(`Soy ${p.cliente}.`);
-    if (wa) link.href = `https://wa.me/${wa}?text=${encodeURIComponent(lineas.join('\n'))}`;
+    link.hidden = !wa || !!p.sena;   // con seña, los botones están en las opciones de pago
+    if (wa) link.href = `https://wa.me/${wa}?text=${encodeURIComponent([`¡Hola! Hice un pedido de DTF en la web (código ${codigo}):`, ...detalle, `Total: ${money(p.total)}`, `Soy ${p.cliente}.`].join('\n'))}`;
   }
 
   /* =========================================================
@@ -515,7 +500,6 @@
     });
     $('#next-btn').addEventListener('click', () => { if ($('#order-form').hidden) abrirDatos(); else enviar(); });
     $('#order-form').addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
-    $('#ok-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(aliasPago()); toast('Alias copiado: ' + aliasPago()); } catch (e) { toast('Alias: ' + aliasPago()); } });
     let rz = 0;
     window.addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(renderLienzo); });
     actualizar();
