@@ -210,6 +210,8 @@
         // El diseño queda con fondo transparente (se manda como PNG)
         p.img = nuevo; p.prev = fitInside(nuevo, 700); p.thumb = fitInside(nuevo, 120).toDataURL('image/png');
         p.alpha = hasAlpha(nuevo); p.editado = true;
+        // Si se recortó, el ancho en cm baja en proporción: lo que queda mide lo mismo que antes
+        if (nuevo.fraccionAncho && nuevo.fraccionAncho < 0.999) p.w = Math.max(1, Math.round(p.w * nuevo.fraccionAncho * 10) / 10);
         actualizar();
         toast('Listo: fondo quitado.');
       });

@@ -796,6 +796,7 @@
             p.url = URL.createObjectURL(blob);
             p.img = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = p.url; });
             p.ratio = p.img.naturalHeight / p.img.naturalWidth;
+            if (nuevo.fraccionAncho && nuevo.fraccionAncho < 0.999) p.w = Math.max(1, Math.round(p.w * nuevo.fraccionAncho * 2) / 2);
             lista(); recalc();
             toast('Listo: fondo quitado.');
           });
