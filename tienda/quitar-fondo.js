@@ -120,15 +120,18 @@
     recortar: '<b>Arrastrá un rectángulo</b> alrededor de lo que querés dejar. Ajustalo moviendo las esquinas o el centro y tocá <b>Recortar</b>.',
   };
 
-  function abrir(original, nombre) {
+  /* previo: el estado de una edición anterior del mismo diseño (para seguir
+     donde quedó y poder deshacer o volver al original aunque ya se haya usado) */
+  function abrir(original, nombre, previo) {
     ponerEstilos();
     return new Promise((resolve) => {
       const base = copiar(original);
       const W = base.width, H = base.height;
       const baseData = base.getContext('2d').getImageData(0, 0, W, H);
-      const ops = [];            // { tipo: 'color', puntos, tol, global } | { tipo: 'rect', x, y, w, h }
-      const historia = [];       // para deshacer: 'op' o { recorte anterior }
-      let recorte = null;        // { x, y, w, h } en píxeles de la imagen
+      const copia = (o) => JSON.parse(JSON.stringify(o));
+      const ops = previo ? copia(previo.ops || []) : [];            // { tipo: 'color', puntos, tol, global } | { tipo: 'rect', x, y, w, h }
+      const historia = previo ? copia(previo.historia || []) : [];  // para deshacer: 'op' o { recorte anterior }
+      let recorte = previo && previo.recorte ? { ...previo.recorte } : null;   // { x, y, w, h } en píxeles de la imagen
       let modo = 'color';
       let actual = baseData;
       const dlg = document.createElement('dialog');
@@ -193,8 +196,8 @@
         }
         q('[data-a="selbar"]').hidden = !sel;
         q('[data-a="selok"]').textContent = modo === 'recortar' ? '✓ Recortar' : '✓ Borrar zona';
-        q('[data-a="deshacer"]').disabled = !historia.length;
-        q('[data-a="original"]').disabled = !historia.length;
+        q('[data-a="deshacer"]').disabled = !historia.length && !sel;
+        q('[data-a="original"]').disabled = !historia.length && !sel;
       }
       // Tamaño de los tiradores en píxeles de la imagen (≈ 16 px en pantalla)
       const escala = () => vista().w / (cv.getBoundingClientRect().width || vista().w);
@@ -312,10 +315,11 @@
         if (vivos.length) nuevaOp({ tipo: 'color', puntos: vivos, tol: Number(q('[data-a="tol"]').value), global: false });
       });
       q('[data-a="deshacer"]').addEventListener('click', () => {
+        if (sel) { sel = null; pintar(); return; }   // primero descarta el rectángulo sin confirmar
         const h = historia.pop();
         if (h === 'op') { ops.pop(); recalcular(); } else if (h) { recorte = h.recorte; pintar(); }
       });
-      q('[data-a="original"]').addEventListener('click', () => { ops.length = 0; historia.length = 0; recorte = null; recalcular(); });
+      q('[data-a="original"]').addEventListener('click', () => { sel = null; ops.length = 0; historia.length = 0; recorte = null; recalcular(); });
       dlg.querySelectorAll('[data-bg]').forEach((b) => b.addEventListener('click', () => {
         q('.qf-stage').className = `qf-stage bg-${b.dataset.bg}`;
         dlg.querySelectorAll('[data-bg]').forEach((x) => x.classList.toggle('on', x === b));
@@ -332,13 +336,16 @@
           if (!c) { alert('Quedó todo borrado. Deshacé algún paso.'); return; }
           R = c;
         }
-        if (!historia.length && R.w === W && R.h === H) { cerrar(null); return; }   // sin cambios
+        const tocado = historia.length || R.w !== W || R.h !== H;
+        if (!tocado && !(previo && (previo.historia || []).length)) { cerrar(null); return; }   // sin cambios
         const out = lienzo(R.w, R.h);
         out.getContext('2d').putImageData(actual, -R.x, -R.y, R.x, R.y, R.w, R.h);
         out.fraccionAncho = R.w / W;   // para que el diseño mantenga su tamaño real al recortarlo
+        out.estado = { ops: copia(ops), historia: copia(historia), recorte: recorte ? { ...recorte } : null };
+        out.sinCambios = !tocado;      // se volvió al original
         cerrar(out);
       });
-      pintar();
+      if (ops.length) recalcular(); else pintar();
       dlg.showModal();
     });
   }

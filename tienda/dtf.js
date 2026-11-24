@@ -212,15 +212,21 @@
       li.querySelector('[data-act="quitar"]').addEventListener('click', () => { piezas = piezas.filter((x) => x !== p); actualizar(); });
       const bf = li.querySelector('[data-act="fondo"]');
       if (bf) bf.addEventListener('click', async () => {
-        const nuevo = await TEFondo.abrir(p.img, p.name);
+        // Siempre se edita sobre la imagen original subida, siguiendo donde quedó la última vez
+        if (!p.orig) p.orig = p.img;
+        const nuevo = await TEFondo.abrir(p.orig, p.name, p.estado);
         if (!nuevo) return;
-        // El diseño queda con fondo transparente (se manda como PNG)
-        p.img = nuevo; p.prev = fitInside(nuevo, 700); p.thumb = fitInside(nuevo, 120).toDataURL('image/png');
-        p.alpha = hasAlpha(nuevo); p.editado = true;
+        const anchoOriginal = p.w / (p.frac || 1);   // cuánto mediría la imagen entera, sin recortes
+        const img = nuevo.sinCambios ? p.orig : nuevo;
+        p.img = img; p.prev = fitInside(img, 700); p.thumb = fitInside(img, 120).toDataURL('image/png');
+        p.alpha = hasAlpha(img);
+        p.estado = nuevo.sinCambios ? null : nuevo.estado;
+        p.frac = nuevo.sinCambios ? 1 : nuevo.fraccionAncho;
+        p.editado = !nuevo.sinCambios;
         // Si se recortó, el ancho en cm baja en proporción: lo que queda mide lo mismo que antes
-        if (nuevo.fraccionAncho && nuevo.fraccionAncho < 0.999) p.w = Math.max(1, Math.round(p.w * nuevo.fraccionAncho * 10) / 10);
+        p.w = Math.max(0.5, Math.round(anchoOriginal * p.frac * 100) / 100);
         actualizar();
-        toast('Listo: fondo quitado.');
+        toast(nuevo.sinCambios ? 'Volviste al diseño original.' : 'Listo: diseño retocado.');
       });
     });
   }

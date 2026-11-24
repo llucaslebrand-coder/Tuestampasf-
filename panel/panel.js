@@ -786,21 +786,30 @@
           // Quitar el fondo del diseño (misma herramienta que la página de DTF)
           li.querySelector('[data-fondo]').addEventListener('click', async () => {
             try { await loadScript('../tienda/quitar-fondo.js'); } catch (e) { toast('No se pudo abrir la herramienta.', true); return; }
+            // Siempre sobre la imagen original, siguiendo donde quedó la última edición
+            if (!p.orig) p.orig = { img: p.img, file: p.file };
             const c = document.createElement('canvas');
-            c.width = p.img.naturalWidth; c.height = p.img.naturalHeight;
-            c.getContext('2d').drawImage(p.img, 0, 0);
-            const nuevo = await window.TEFondo.abrir(c, p.file.name);
+            c.width = p.orig.img.naturalWidth; c.height = p.orig.img.naturalHeight;
+            c.getContext('2d').drawImage(p.orig.img, 0, 0);
+            const nuevo = await window.TEFondo.abrir(c, p.orig.file.name, p.estado);
             if (!nuevo) return;
-            const blob = await new Promise((res) => nuevo.toBlob(res, 'image/png'));
-            const nombre = p.file.name.replace(/\.[a-z0-9]+$/i, '') + '-sin-fondo.png';
+            const anchoOriginal = p.w / (p.frac || 1);
+            let blob, nombre;
+            if (nuevo.sinCambios) { blob = p.orig.file; nombre = p.orig.file.name; }
+            else {
+              blob = await new Promise((res) => nuevo.toBlob(res, 'image/png'));
+              nombre = p.orig.file.name.replace(/\.[a-z0-9]+$/i, '') + '-retocado.png';
+            }
             URL.revokeObjectURL(p.url);
-            p.file = new File([blob], nombre, { type: 'image/png' });
+            p.file = nuevo.sinCambios ? p.orig.file : new File([blob], nombre, { type: 'image/png' });
             p.url = URL.createObjectURL(blob);
             p.img = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = p.url; });
             p.ratio = p.img.naturalHeight / p.img.naturalWidth;
-            if (nuevo.fraccionAncho && nuevo.fraccionAncho < 0.999) p.w = Math.max(1, Math.round(p.w * nuevo.fraccionAncho * 2) / 2);
+            p.estado = nuevo.sinCambios ? null : nuevo.estado;
+            p.frac = nuevo.sinCambios ? 1 : nuevo.fraccionAncho;
+            p.w = Math.max(0.5, Math.round(anchoOriginal * p.frac * 10) / 10);
             lista(); recalc();
-            toast('Listo: fondo quitado.');
+            toast(nuevo.sinCambios ? 'Volviste al diseño original.' : 'Listo: diseño retocado.');
           });
         });
       };
