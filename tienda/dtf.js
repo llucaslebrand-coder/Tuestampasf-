@@ -156,7 +156,7 @@
         const thumb = fitInside(img, 120).toDataURL('image/png');
         piezas.push({ id: uid(), img, prev: fitInside(img, 700), thumb, name: f.name, w, cant: 1, alpha: hasAlpha(img) });
       }
-      if (piezas.some((p) => !p.alpha)) toast('Algún diseño tiene fondo: se va a imprimir con ese fondo. Lo ideal es PNG con fondo transparente.');
+      if (piezas.some((p) => !p.alpha)) toast('Algún diseño tiene fondo: tocá «Quitar el fondo» en ese diseño, o se imprime con el fondo.');
     } catch (e) {
       console.error(e);
       toast('No se pudo abrir alguna imagen.');
@@ -183,6 +183,7 @@
           ${MODO() === 'sueltas' ? `<small class="dtf-price">${money(precioSuelta(p.w, h))} c/u${p.cant > 1 ? ` · ${money(precioSuelta(p.w, h) * p.cant)}` : ''}</small>` : ''}
           ${ppp < 150 ? `<small class="dtf-warn">Poca resolución para ${cm(p.w)} cm (${ppp} ppp): puede verse pixelado.</small>` : ''}
           ${!p.alpha ? '<small class="dtf-warn">Tiene fondo: se imprime con ese fondo.</small>' : ''}
+          ${window.TEFondo ? `<button type="button" class="dtf-fondo" data-act="fondo">${p.alpha ? (p.editado ? '✨ Retocar fondo' : '✨ Quitar algún color') : '✨ Quitar el fondo'}</button>` : ''}
         </div>
         <button type="button" class="icon-btn danger" data-act="quitar" aria-label="Quitar ${esc(p.name)}">✕</button>
       </li>`;
@@ -202,6 +203,16 @@
       li.querySelector('[data-act="menos"]').addEventListener('click', () => { p.cant = Math.max(1, p.cant - 1); actualizar(); });
       li.querySelector('[data-act="mas"]').addEventListener('click', () => { p.cant = Math.min(MAX_COPIAS, p.cant + 1); actualizar(); });
       li.querySelector('[data-act="quitar"]').addEventListener('click', () => { piezas = piezas.filter((x) => x !== p); actualizar(); });
+      const bf = li.querySelector('[data-act="fondo"]');
+      if (bf) bf.addEventListener('click', async () => {
+        const nuevo = await TEFondo.abrir(p.img, p.name);
+        if (!nuevo) return;
+        // El diseño queda con fondo transparente (se manda como PNG)
+        p.img = nuevo; p.prev = fitInside(nuevo, 700); p.thumb = fitInside(nuevo, 120).toDataURL('image/png');
+        p.alpha = hasAlpha(nuevo); p.editado = true;
+        actualizar();
+        toast('Listo: fondo quitado.');
+      });
     });
   }
 

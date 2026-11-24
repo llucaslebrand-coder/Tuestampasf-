@@ -771,7 +771,8 @@
           <span class="dtfm-alto">alto ${num(altoDe(p), 1)} cm</span>
           <label>× <input type="number" data-k="cant" min="1" max="500" value="${p.cant}"></label>
           ${modo === 'sueltas' ? `<b>${money(precioSuelta(p.w, altoDe(p)))} c/u</b>` : ''}
-          <button type="button" class="icon-btn danger" aria-label="Quitar diseño">✕</button></li>`).join('');
+          <button type="button" class="panel-btn" data-fondo>✨ Quitar fondo</button>
+          <button type="button" class="icon-btn danger" data-quitar aria-label="Quitar diseño">✕</button></li>`).join('');
         $$('#pdf-list li', body).forEach((li) => {
           const p = piezas[Number(li.dataset.i)];
           $$('input', li).forEach((inp) => inp.addEventListener('change', () => {
@@ -779,7 +780,25 @@
             else p.cant = clamp(Math.round(Number(inp.value) || 1), 1, 500);
             lista(); recalc();
           }));
-          li.querySelector('button').addEventListener('click', () => { URL.revokeObjectURL(p.url); piezas.splice(Number(li.dataset.i), 1); lista(); recalc(); });
+          li.querySelector('[data-quitar]').addEventListener('click', () => { URL.revokeObjectURL(p.url); piezas.splice(Number(li.dataset.i), 1); lista(); recalc(); });
+          // Quitar el fondo del diseño (misma herramienta que la página de DTF)
+          li.querySelector('[data-fondo]').addEventListener('click', async () => {
+            try { await loadScript('../tienda/quitar-fondo.js'); } catch (e) { toast('No se pudo abrir la herramienta.', true); return; }
+            const c = document.createElement('canvas');
+            c.width = p.img.naturalWidth; c.height = p.img.naturalHeight;
+            c.getContext('2d').drawImage(p.img, 0, 0);
+            const nuevo = await window.TEFondo.abrir(c, p.file.name);
+            if (!nuevo) return;
+            const blob = await new Promise((res) => nuevo.toBlob(res, 'image/png'));
+            const nombre = p.file.name.replace(/\.[a-z0-9]+$/i, '') + '-sin-fondo.png';
+            URL.revokeObjectURL(p.url);
+            p.file = new File([blob], nombre, { type: 'image/png' });
+            p.url = URL.createObjectURL(blob);
+            p.img = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = p.url; });
+            p.ratio = p.img.naturalHeight / p.img.naturalWidth;
+            lista(); recalc();
+            toast('Listo: fondo quitado.');
+          });
         });
       };
       $('#pdf-files', body).addEventListener('change', async (e) => {

@@ -46,3 +46,6 @@
   .dtf-item { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; }
   .dtf-item > img { width: 52px; height: 52px; }
 }
+
+.dtf-fondo { justify-self: start; min-height: 34px; padding: 4px 12px; border: 1px solid #b9d2f5; border-radius: 9px; background: #eaf3ff; color: #12366e; font: 700 13px var(--font); cursor: pointer; }
+.dtf-fondo:hover { background: #dbeaff; }
