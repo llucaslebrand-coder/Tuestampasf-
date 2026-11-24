@@ -223,3 +223,5 @@ body.home { padding-bottom: 0; }
   .nf-badge body.home { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
   .home-sticky a:focus-visible { outline: 3px solid var(--brand-light); outline-offset: 3px; }
 }
+
+.choice-tag { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 6px; background: var(--brand-soft, #e8eefc); color: var(--brand); font-size: 12px; vertical-align: 3px; }

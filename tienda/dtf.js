@@ -349,7 +349,7 @@
       ${sena ? `<div class="sena-row"><dt>Seña para confirmar</dt><dd>${money(sena)}</dd></div>` : ''}`;
     $('#buy-total').textContent = money(piezas.length ? r.total : 0);
     $('#buy-detail').textContent = MODO() === 'sueltas'
-      ? (piezas.length ? `${r.copias} ${r.copias === 1 ? 'estampa' : 'estampas'}` : 'Estampas DTF sueltas')
+      ? (piezas.length ? `${r.copias} ${r.copias === 1 ? 'estampa' : 'estampas'}` : 'Estampas sueltas')
       : (piezas.length ? `${metrosTxt(r.largo)} · ${r.copias} ${r.copias === 1 ? 'copia' : 'copias'}` : `Desde ${metrosTxt(MINIMO())}`);
     $('#next-btn').disabled = !piezas.length;
     $('#pay-help').innerHTML = sena
@@ -461,7 +461,7 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const it = p.items[0];
     const codigo = p.id.slice(-6).toUpperCase();
-    const que = it.modo === 'sueltas' ? `pedido de <b>${it.layout.length} ${it.layout.length === 1 ? 'estampa DTF' : 'estampas DTF'}</b>` : `lienzo DTF <b>${cm(it.ancho)} × ${cm(it.largo)} cm</b>`;
+    const que = it.modo === 'sueltas' ? `pedido de <b>${it.layout.length} ${it.layout.length === 1 ? 'estampa' : 'estampas'}</b> (DTF)` : `lienzo de estampas (DTF) de <b>${cm(it.ancho)} × ${cm(it.largo)} cm</b>`;
     $('#ok-text').innerHTML = `Gracias, ${esc(p.cliente)}. Tu ${que} (pedido <b>${codigo}</b>) por <b>${money(p.total)}</b> queda reservado.${p.sena ? ' Para <b>confirmarlo</b>, pagá la seña.' : ''}${modo === 'demo' ? '<br><small>(Modo demo: el pedido quedó en el panel de este dispositivo.)</small>' : ''}`;
     const detalle = [it.modo === 'sueltas' ? `• ${it.layout.length} estampas DTF sueltas` : `• Lienzo DTF ${cm(it.ancho)} × ${cm(it.largo)} cm con ${it.layout.length} ${it.layout.length === 1 ? 'copia' : 'copias'}`];
     $('#ok-pay').hidden = !p.sena;
@@ -496,9 +496,9 @@
     await Promise.all([cargarConfig(), window.TEVend ? TEVend.iniciar() : null]);
     if (window.TEVend) TEVend.prepararFormulario();
     if (MODO() === 'sueltas') {
-      $('#dtf-title').textContent = 'Imprimí tus estampas DTF';
-      $('.shop-opts .lead').innerHTML = `Estampas DTF sueltas, de hasta <b>${cm(usable())} cm</b> de ancho. Subí tus diseños, elegí la medida y cuántas copias querés: cada estampa se cobra según su tamaño. Te las entregamos listas para planchar.`;
-      $('.shop-opts .eyebrow').textContent = 'DTF por estampa';
+      $('#dtf-title').textContent = 'Imprimí tus estampas';
+      $('.shop-opts .lead').innerHTML = `Estampas sueltas, de hasta <b>${cm(usable())} cm</b> de ancho. Subí tus diseños, elegí la medida y cuántas copias querés: cada estampa se cobra según su tamaño. Te las entregamos listas para planchar.`;
+      $('.shop-opts .eyebrow').textContent = 'Estampas para planchar (DTF) · sueltas';
       $('.dtf-sheet-box .hint').textContent = 'Así se acomodan tus estampas para imprimirlas. Cada una se cobra según su tamaño.';
     } else {
       $('#ancho-txt').textContent = `${cm(ANCHO())} cm`;

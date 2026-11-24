@@ -50,7 +50,7 @@
       <span>👋 Hola, <b>${esc(info.nombre)}</b>. Estás cargando pedidos como vendedor: te quedan a tu nombre.</span>
       <span class="vend-bar-actions">
         <button type="button" class="panel-btn" id="vend-copy">⧉ Link para tu cliente</button>
-        <a class="panel-btn" href="dtf.html">DTF solo</a>
+        <a class="panel-btn" href="dtf.html">Solo la estampa</a>
         <button type="button" class="panel-btn" id="vend-salir" title="Dejar de cargar a tu nombre en este dispositivo">Salir</button>
       </span></div>`);
     document.getElementById('vend-copy').addEventListener('click', async () => {
