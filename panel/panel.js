@@ -768,7 +768,7 @@
         $('#pdf-list', body).innerHTML = piezas.map((p, i) => `<li data-i="${i}"><img src="${p.url}" alt="">
           <span class="dtfm-name">${esc(p.file.name)}</span>
           <label>Ancho <input type="number" data-k="w" min="1" max="${ANCHO}" step="0.5" value="${p.w}"> cm</label>
-          <span class="dtfm-alto">alto ${num(altoDe(p), 1)} cm</span>
+          <label>Alto <input type="number" data-k="h" min="0.5" max="500" step="0.5" value="${num(altoDe(p), 1).replace(',', '.')}"> cm</label>
           <label>× <input type="number" data-k="cant" min="1" max="500" value="${p.cant}"></label>
           ${modo === 'sueltas' ? `<b>${money(precioSuelta(p.w, altoDe(p)))} c/u</b>` : ''}
           <button type="button" class="panel-btn" data-fondo>✨ Quitar fondo</button>
@@ -776,7 +776,9 @@
         $$('#pdf-list li', body).forEach((li) => {
           const p = piezas[Number(li.dataset.i)];
           $$('input', li).forEach((inp) => inp.addEventListener('change', () => {
-            if (inp.dataset.k === 'w') p.w = clamp(Math.round((Number(inp.value) || 1) * 2) / 2, 1, ANCHO);
+            // Ancho o alto: el otro se calcula solo para no deformar el diseño
+            if (inp.dataset.k === 'w') p.w = clamp(Math.round((Number(inp.value) || 1) * 10) / 10, 0.5, ANCHO);
+            else if (inp.dataset.k === 'h') p.w = clamp(Math.round((Number(inp.value) || 1) / p.ratio * 10) / 10, 0.5, ANCHO);
             else p.cant = clamp(Math.round(Number(inp.value) || 1), 1, 500);
             lista(); recalc();
           }));

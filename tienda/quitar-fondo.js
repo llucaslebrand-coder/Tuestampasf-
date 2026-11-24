@@ -92,16 +92,26 @@
     document.head.appendChild(css);
   }
 
-  /* Caja de lo que tiene algo visible (para recortar los márgenes transparentes) */
+  /* Caja de lo que tiene algo visible (para recortar los márgenes transparentes).
+     Ignora puntitos sueltos casi invisibles que deja el JPG alrededor del dibujo:
+     una fila o columna cuenta solo si tiene varios píxeles bien visibles. */
   function cajaVisible(img, W, R) {
     const d = img.data;
-    let x0 = R.x + R.w, y0 = R.y + R.h, x1 = -1, y1 = -1;
-    for (let y = R.y; y < R.y + R.h; y++) {
-      for (let x = R.x; x < R.x + R.w; x++) {
-        if (d[(y * W + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-      }
+    const filas = new Uint32Array(R.h), cols = new Uint32Array(R.w);
+    for (let y = 0; y < R.h; y++) {
+      let i = ((R.y + y) * W + R.x) * 4 + 3;
+      for (let x = 0; x < R.w; x++, i += 4) if (d[i] > 40) { filas[y]++; cols[x]++; }
     }
-    return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    const minF = Math.max(2, Math.round(R.w * 0.003)), minC = Math.max(2, Math.round(R.h * 0.003));
+    let y0 = 0, y1 = R.h - 1, x0 = 0, x1 = R.w - 1;
+    while (y0 <= y1 && filas[y0] < minF) y0++;
+    while (y1 >= y0 && filas[y1] < minF) y1--;
+    while (x0 <= x1 && cols[x0] < minC) x0++;
+    while (x1 >= x0 && cols[x1] < minC) x1--;
+    if (y0 > y1 || x0 > x1) return null;
+    const m = 2;   // un margen mínimo para no cortar el borde suave
+    x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(R.w - 1, x1 + m); y1 = Math.min(R.h - 1, y1 + m);
+    return { x: R.x + x0, y: R.y + y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
   }
 
   const AYUDA = {
@@ -145,6 +155,7 @@
           <span>Ver sobre:</span>
           <button type="button" class="on" data-bg="cuadros">Cuadriculado</button><button type="button" data-bg="blanco">Blanco</button><button type="button" data-bg="negro">Negro</button>
         </div>
+        <div class="qf-row"><button type="button" data-a="trimya">✂ Quitar márgenes vacíos ahora</button></div>
         <label class="qf-check"><input type="checkbox" data-a="trim" checked> <span><b>Quitar los márgenes transparentes</b> al terminar (ocupa menos film)</span></label>
         <div class="qf-acts">
           <button type="button" data-a="deshacer" disabled>↶ Deshacer</button>
@@ -262,6 +273,13 @@
         else { historia.push({ recorte }); recorte = R; pintar(); }
       };
       q('[data-a="selok"]').addEventListener('click', confirmarSel);
+      // Recorta ya lo que sobra alrededor del dibujo (se puede deshacer)
+      q('[data-a="trimya"]').addEventListener('click', () => {
+        const v = vista(), c = cajaVisible(actual, W, v);
+        if (!c) { alert('No quedó nada visible. Deshacé algún paso.'); return; }
+        if (c.w >= v.w - 1 && c.h >= v.h - 1) { alert('No hay márgenes vacíos para quitar. Si el fondo todavía se ve, quitalo primero con «Quitar color» o «Fondo automático».'); return; }
+        sel = null; historia.push({ recorte }); recorte = c; pintar();
+      });
       q('[data-a="selno"]').addEventListener('click', () => { sel = null; pintar(); });
       cv.addEventListener('click', (e) => {
         if (modo !== 'color') return;

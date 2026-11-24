@@ -176,8 +176,8 @@
         <div class="dtf-item-body">
           <b title="${esc(p.name)}">${i + 1}. ${esc(p.name)}</b>
           <div class="dtf-item-ctrls">
-            <label>Ancho <span class="unit-input"><input type="number" data-k="w" min="1" max="${Math.floor(Math.max(usable(), h))}" step="0.5" value="${cm(p.w).replace(',', '.')}" inputmode="decimal"><i>cm</i></span></label>
-            <span class="dtf-alto">× ${cm(h)} cm</span>
+            <label>Ancho <span class="unit-input"><input type="number" data-k="w" min="0.5" step="0.5" value="${cm(p.w).replace(',', '.')}" inputmode="decimal"><i>cm</i></span></label>
+            <label>Alto <span class="unit-input"><input type="number" data-k="h" min="1" step="0.5" value="${cm(h).replace(',', '.')}" inputmode="decimal"><i>cm</i></span></label>
             <label>Copias <span class="qty small"><button type="button" data-act="menos" aria-label="Una copia menos">−</button><input type="number" data-k="cant" min="1" max="${MAX_COPIAS}" value="${p.cant}" inputmode="numeric"><button type="button" data-act="mas" aria-label="Una copia más">+</button></span></label>
           </div>
           ${MODO() === 'sueltas' ? `<small class="dtf-price">${money(precioSuelta(p.w, h))} c/u${p.cant > 1 ? ` · ${money(precioSuelta(p.w, h) * p.cant)}` : ''}</small>` : ''}
@@ -190,15 +190,22 @@
     }).join('');
     $$('.dtf-item', ul).forEach((li) => {
       const p = piezas.find((x) => x.id === li.dataset.id);
-      li.querySelector('[data-k="w"]').addEventListener('change', (e) => {
+      // Se elige el ancho o el alto: el otro se calcula solo para no deformar el diseño
+      const ratio = p.img.height / p.img.width;
+      const ponerAncho = (w) => {
         const max = Math.max(usable(), 0);
-        let w = clamp(Number(String(e.target.value).replace(',', '.')) || p.w, 1, 1000);
-        // Si es más ancho que el lienzo, solo entra girado: el alto tiene que caber en el ancho
-        const ratio = p.img.height / p.img.width;
-        if (w > max && w * ratio > max) { w = max; toast(`Lo más grande que entra es ${cm(max)} cm de ancho.`); }
-        p.w = Math.round(w * 10) / 10;
+        w = clamp(w || p.w, 0.5, 1000);
+        // Si es más ancho que el lienzo, solo entra girado: el otro lado tiene que caber en el ancho
+        if (w > max && w * ratio > max) {
+          w = ratio > 1 ? max / ratio : max;
+          toast(`Más grande no entra en el lienzo de ${cm(ANCHO())} cm: queda en ${cm(w)} × ${cm(w * ratio)} cm.`);
+        }
+        p.w = Math.round(w * 100) / 100;
         actualizar();
-      });
+      };
+      const num = (v) => Number(String(v).replace(',', '.'));
+      li.querySelector('[data-k="w"]').addEventListener('change', (e) => ponerAncho(num(e.target.value)));
+      li.querySelector('[data-k="h"]').addEventListener('change', (e) => ponerAncho(num(e.target.value) / ratio));
       li.querySelector('[data-k="cant"]').addEventListener('change', (e) => { p.cant = clamp(Math.round(Number(e.target.value) || 1), 1, MAX_COPIAS); actualizar(); });
       li.querySelector('[data-act="menos"]').addEventListener('click', () => { p.cant = Math.max(1, p.cant - 1); actualizar(); });
       li.querySelector('[data-act="mas"]').addEventListener('click', () => { p.cant = Math.min(MAX_COPIAS, p.cant + 1); actualizar(); });
