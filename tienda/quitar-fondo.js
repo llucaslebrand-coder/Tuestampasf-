@@ -265,7 +265,9 @@
       q('[data-a="selno"]').addEventListener('click', () => { sel = null; pintar(); });
       cv.addEventListener('click', (e) => {
         if (modo !== 'color') return;
-        const [x, y] = aImagen(e);
+        // Píxel entero dentro de la imagen (las coordenadas de la pantalla vienen con decimales)
+        const [fx, fy] = aImagen(e);
+        const x = Math.min(W - 1, Math.floor(fx)), y = Math.min(H - 1, Math.floor(fy));
         if (actual.data[(y * W + x) * 4 + 3] < 10) return;   // ya es transparente
         nuevaOp({ tipo: 'color', puntos: [[x, y]], tol: Number(q('[data-a="tol"]').value), global: q('[data-a="global"]').checked });
       });
