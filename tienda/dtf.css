@@ -39,6 +39,8 @@
 .dtf-busy { position: fixed; inset: 0; z-index: 400; display: grid; place-items: center; align-content: center; gap: 10px; background: #ffffffd9; }
 
 @media (max-width: 820px) {
+  /* En el celular primero se sube y se arma; el lienzo queda debajo */
+  .dtf-grid .shop-opts { order: -1; }
   .dtf-sheet-box { position: static; }
   .dtf-sheet-scroll { max-height: 52vh; }
 }

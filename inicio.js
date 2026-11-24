@@ -99,10 +99,10 @@
     }
   }
 
-  /* En celular aparece un botón fijo "Diseñá tu remera" al pasar la portada */
+  /* En celular aparecen dos botones fijos (remera / DTF) al pasar las opciones de la portada */
   function stickyCta() {
     const btn = $('.home-sticky');
-    const hero = $('.hero-cta');
+    const hero = $('.hero-choices');
     if (!btn || !hero || !('IntersectionObserver' in window)) return;
     new IntersectionObserver(([e]) => btn.classList.toggle('is-visible', !e.isIntersecting)).observe(hero);
   }
