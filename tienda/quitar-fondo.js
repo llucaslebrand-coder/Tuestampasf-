@@ -79,7 +79,8 @@
       .qf-row label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
       .qf-row input[type=range] { width: 150px; }
       .qf-row input[type=checkbox] { width: 18px; height: 18px; flex: none; }
-      .qf-row[hidden] { display: none; }
+      .qf-row[hidden], .qf-sel[hidden] { display: none; }
+      .qf-sel { display: flex; gap: 8px; } .qf-sel button { flex: 1; min-height: 44px; }
       .qf-check { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.35; }
       .qf-check input { flex: none; width: 18px; height: 18px; margin-top: 1px; }
       .qf-modos button { flex: 1 1 auto; }
@@ -105,8 +106,8 @@
 
   const AYUDA = {
     color: '<b>Tocá el color que querés borrar</b> (por ejemplo el fondo). Podés tocar varias veces. Si quedan restos, subí la tolerancia.',
-    borrar: '<b>Arrastrá un rectángulo</b> sobre lo que sobra (textos, marcas, manchas) y se borra.',
-    recortar: '<b>Arrastrá un rectángulo</b> alrededor de lo que querés dejar. Lo de afuera se corta.',
+    borrar: '<b>Arrastrá un rectángulo</b> sobre lo que sobra (textos, marcas, manchas). Ajustalo moviendo las esquinas y tocá <b>Borrar zona</b>.',
+    recortar: '<b>Arrastrá un rectángulo</b> alrededor de lo que querés dejar. Ajustalo moviendo las esquinas o el centro y tocá <b>Recortar</b>.',
   };
 
   function abrir(original, nombre) {
@@ -131,6 +132,10 @@
         </div>
         <p class="qf-help" data-a="ayuda">${AYUDA.color}</p>
         <div class="qf-stage bg-cuadros"><canvas aria-label="Vista del diseño"></canvas></div>
+        <div class="qf-sel" data-a="selbar" hidden>
+          <button type="button" class="qf-ok" data-a="selok">✓ Recortar</button>
+          <button type="button" data-a="selno">Descartar</button>
+        </div>
         <div class="qf-row" data-solo="color">
           <label>Tolerancia <input type="range" min="0" max="100" value="30" data-a="tol"> <span data-a="tolv">30</span></label>
           <label><input type="checkbox" data-a="global"> En toda la imagen (también adentro de letras)</label>
@@ -152,27 +157,41 @@
       const cv = q('canvas');
       const cx = cv.getContext('2d');
       const vista = () => recorte || { x: 0, y: 0, w: W, h: H };
-      let arrastre = null;   // { x0, y0, x1, y1 } en píxeles de la imagen
+      let sel = null;        // rectángulo marcado y todavía sin confirmar { x, y, w, h }
+      let gesto = null;      // lo que se está arrastrando: nuevo, mover o una esquina/borde
 
       function pintar() {
         const v = vista();
         if (cv.width !== v.w || cv.height !== v.h) { cv.width = v.w; cv.height = v.h; }
         cx.clearRect(0, 0, v.w, v.h);
         cx.putImageData(actual, -v.x, -v.y, v.x, v.y, v.w, v.h);
-        if (arrastre) {
-          const x = Math.min(arrastre.x0, arrastre.x1) - v.x, y = Math.min(arrastre.y0, arrastre.y1) - v.y;
-          const w = Math.abs(arrastre.x1 - arrastre.x0), h = Math.abs(arrastre.y1 - arrastre.y0);
+        if (sel) {
+          const x = sel.x - v.x, y = sel.y - v.y, w = sel.w, h = sel.h;
           const lw = Math.max(2, v.w / 300);
           if (modo === 'recortar') {   // oscurece lo que se va a cortar
             cx.fillStyle = '#0b1a3d88';
             cx.fillRect(0, 0, v.w, y); cx.fillRect(0, y + h, v.w, v.h - y - h); cx.fillRect(0, y, x, h); cx.fillRect(x + w, y, v.w - x - w, h);
           } else { cx.fillStyle = '#e0484855'; cx.fillRect(x, y, w, h); }
-          cx.setLineDash([lw * 4, lw * 3]); cx.lineWidth = lw; cx.strokeStyle = modo === 'recortar' ? '#0d4fa3' : '#e04848';
+          const col = modo === 'recortar' ? '#0d4fa3' : '#e04848';
+          cx.setLineDash([lw * 4, lw * 3]); cx.lineWidth = lw; cx.strokeStyle = col;
           cx.strokeRect(x, y, w, h); cx.setLineDash([]);
+          // Tiradores para ajustar
+          const t = manija();
+          cx.fillStyle = '#fff'; cx.strokeStyle = col; cx.lineWidth = lw;
+          puntosManija().forEach(([px, py]) => { cx.fillRect(px - v.x - t / 2, py - v.y - t / 2, t, t); cx.strokeRect(px - v.x - t / 2, py - v.y - t / 2, t, t); });
         }
+        q('[data-a="selbar"]').hidden = !sel;
+        q('[data-a="selok"]').textContent = modo === 'recortar' ? '✓ Recortar' : '✓ Borrar zona';
         q('[data-a="deshacer"]').disabled = !historia.length;
         q('[data-a="original"]').disabled = !historia.length;
       }
+      // Tamaño de los tiradores en píxeles de la imagen (≈ 16 px en pantalla)
+      const escala = () => vista().w / (cv.getBoundingClientRect().width || vista().w);
+      const manija = () => Math.max(6, 16 * escala());
+      const puntosManija = () => {
+        const { x, y, w, h } = sel;
+        return [[x, y, 'nw'], [x + w / 2, y, 'n'], [x + w, y, 'ne'], [x + w, y + h / 2, 'e'], [x + w, y + h, 'se'], [x + w / 2, y + h, 's'], [x, y + h, 'sw'], [x, y + h / 2, 'w']];
+      };
       function aplicarOp(img, o) {
         if (o.tipo === 'rect') {
           const d = img.data;
@@ -186,9 +205,11 @@
         pintar();
       }
       function nuevaOp(o) { ops.push(o); historia.push('op'); aplicarOp(actual, o); pintar(); }
-      function aImagen(e) {
+      function aImagen(e, limitar = true) {
         const r = cv.getBoundingClientRect(), v = vista();
-        return [Math.max(0, Math.min(W - 1, Math.floor(v.x + (e.clientX - r.left) / r.width * v.w))), Math.max(0, Math.min(H - 1, Math.floor(v.y + (e.clientY - r.top) / r.height * v.h)))];
+        let x = v.x + (e.clientX - r.left) / r.width * v.w, y = v.y + (e.clientY - r.top) / r.height * v.h;
+        if (limitar) { x = Math.max(v.x, Math.min(v.x + v.w, x)); y = Math.max(v.y, Math.min(v.y + v.h, y)); }
+        return [x, y];
       }
 
       cv.addEventListener('pointerdown', (e) => {
@@ -196,19 +217,52 @@
         e.preventDefault();
         cv.setPointerCapture(e.pointerId);
         const [x, y] = aImagen(e);
-        arrastre = { x0: x, y0: y, x1: x, y1: y };
+        if (sel) {
+          const t = manija() * 1.4;
+          const h = puntosManija().find(([px, py]) => Math.abs(px - x) <= t && Math.abs(py - y) <= t);
+          if (h) { gesto = { tipo: h[2], ini: { ...sel } }; return; }
+          if (x >= sel.x && x <= sel.x + sel.w && y >= sel.y && y <= sel.y + sel.h) { gesto = { tipo: 'mover', ini: { ...sel }, x0: x, y0: y }; return; }
+        }
+        gesto = { tipo: 'nuevo', x0: x, y0: y };
+        sel = { x, y, w: 0, h: 0 };
+        pintar();
       });
-      cv.addEventListener('pointermove', (e) => { if (!arrastre) return; [arrastre.x1, arrastre.y1] = aImagen(e); pintar(); });
+      cv.addEventListener('pointermove', (e) => {
+        if (!gesto) return;
+        const [x, y] = aImagen(e), v = vista();
+        const g = gesto;
+        if (g.tipo === 'nuevo') sel = { x: Math.min(g.x0, x), y: Math.min(g.y0, y), w: Math.abs(x - g.x0), h: Math.abs(y - g.y0) };
+        else if (g.tipo === 'mover') {
+          sel = { ...g.ini, x: Math.max(v.x, Math.min(v.x + v.w - g.ini.w, g.ini.x + x - g.x0)), y: Math.max(v.y, Math.min(v.y + v.h - g.ini.h, g.ini.y + y - g.y0)) };
+        } else {
+          let { x: l, y: t } = g.ini, r = g.ini.x + g.ini.w, b = g.ini.y + g.ini.h;
+          if (g.tipo.includes('w')) l = Math.min(x, r - 4);
+          if (g.tipo.includes('e')) r = Math.max(x, l + 4);
+          if (g.tipo.includes('n')) t = Math.min(y, b - 4);
+          if (g.tipo.includes('s')) b = Math.max(y, t + 4);
+          sel = { x: l, y: t, w: r - l, h: b - t };
+        }
+        pintar();
+      });
       const soltar = () => {
-        if (!arrastre) return;
-        const R = { x: Math.min(arrastre.x0, arrastre.x1), y: Math.min(arrastre.y0, arrastre.y1), w: Math.abs(arrastre.x1 - arrastre.x0) + 1, h: Math.abs(arrastre.y1 - arrastre.y0) + 1 };
-        arrastre = null;
-        if (R.w < 4 || R.h < 4) { pintar(); return; }
+        if (!gesto) return;
+        gesto = null;
+        if (sel && (sel.w < 4 || sel.h < 4)) sel = null;   // fue un toque, no un rectángulo
+        pintar();
+      };
+      cv.addEventListener('pointerup', soltar);
+      cv.addEventListener('pointercancel', soltar);
+      // Confirmar o descartar el rectángulo
+      const confirmarSel = () => {
+        if (!sel) return;
+        const R = { x: Math.round(sel.x), y: Math.round(sel.y), w: Math.round(sel.w), h: Math.round(sel.h) };
+        R.w = Math.min(R.w, W - R.x); R.h = Math.min(R.h, H - R.y);
+        sel = null;
         if (modo === 'borrar') nuevaOp({ tipo: 'rect', ...R });
         else { historia.push({ recorte }); recorte = R; pintar(); }
       };
-      cv.addEventListener('pointerup', soltar);
-      cv.addEventListener('pointercancel', () => { arrastre = null; pintar(); });
+      q('[data-a="selok"]').addEventListener('click', confirmarSel);
+      q('[data-a="selno"]').addEventListener('click', () => { sel = null; pintar(); });
       cv.addEventListener('click', (e) => {
         if (modo !== 'color') return;
         const [x, y] = aImagen(e);
@@ -217,6 +271,7 @@
       });
       dlg.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => {
         modo = b.dataset.modo;
+        sel = null; pintar();
         dlg.querySelectorAll('[data-modo]').forEach((x) => x.classList.toggle('on', x === b));
         q('[data-a="ayuda"]').innerHTML = AYUDA[modo];
         q('[data-solo="color"]').hidden = modo !== 'color';
@@ -250,6 +305,7 @@
       q('[data-a="cancelar"]').addEventListener('click', () => cerrar(null));
       dlg.addEventListener('cancel', (e) => { e.preventDefault(); cerrar(null); });
       q('[data-a="ok"]').addEventListener('click', () => {
+        if (sel) confirmarSel();   // si quedó un rectángulo marcado, se aplica
         let R = vista();
         if (q('[data-a="trim"]').checked) {
           const c = cajaVisible(actual, W, R);
