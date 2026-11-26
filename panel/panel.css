@@ -358,3 +358,6 @@ html, body { overflow-x: clip; }
 .vend-row select { height: 36px; }
 .vend-row small { color: #5b6478; }
 .vend-badge { background: #e8eefc; color: #1b2a6e; }
+
+.cod-aviso { border-color: #b9d2f5; background: #eef5ff; }
+.cod-aviso p { margin: 6px 0 10px; }

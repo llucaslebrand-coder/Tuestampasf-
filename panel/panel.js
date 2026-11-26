@@ -98,12 +98,12 @@
      2. DATOS INICIALES
      ========================================================= */
   const COLORES_INICIALES = [
-    { nombre: 'Blanca', sigla: 'BLA', hex: '#f4f2ee' },
-    { nombre: 'Negra', sigla: 'NEG', hex: '#1d1d1f' },
-    { nombre: 'Azul marino', sigla: 'AZM', hex: '#1b2a6e' },
-    { nombre: 'Gris melange', sigla: 'GRI', hex: '#9ea3ab' },
-    { nombre: 'Beige', sigla: 'BEI', hex: '#e8d9bf' },
-    { nombre: 'Verde inglés', sigla: 'VIN', hex: '#1f4d3a' },
+    { nombre: 'Blanca', sigla: 'BLAN', hex: '#f4f2ee' },
+    { nombre: 'Negra', sigla: 'NEGR', hex: '#1d1d1f' },
+    { nombre: 'Azul marino', sigla: 'AZUL', hex: '#1b2a6e' },
+    { nombre: 'Gris melange', sigla: 'GRIS', hex: '#9ea3ab' },
+    { nombre: 'Beige', sigla: 'BEIG', hex: '#e8d9bf' },
+    { nombre: 'Verde inglés', sigla: 'VERD', hex: '#1f4d3a' },
   ];
   const TALLES_INICIALES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
   const COTIZADOR_INICIAL = {
@@ -130,7 +130,65 @@
   const estadoLabel = (e) => (ESTADOS.find(([k]) => k === e) || [e, e])[1];
   const ZONAS = ['Pecho', 'Espalda', 'Frente completo', 'Manga', 'Nuca', 'Otra'];
 
-  const codigoDe = (modelo, color, talle) => `TE-${modelo.sigla}-${color.sigla}-${String(talle).padStart(2, '0')}`;
+  /* Código de barras de cada remera: MODELO-COLOR-TALLE con palabras fáciles de leer
+     al estampar, por ejemplo OVER-NEGR-03 (oversize negra talle 3) o UNIS-BLAN-10. */
+  const codigoDe = (modelo, color, talle) => `${modelo.sigla}-${color.sigla}-${String(talle).padStart(2, '0')}`;
+  const limpioSigla = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, '');
+  /* Sigla de 4 letras del modelo: OVER para oversize, UNIS para unisex, si no la palabra que lo distingue */
+  function siglaModelo(nombre) {
+    const ps = limpioSigla(nombre).split(/\s+/).filter(Boolean);
+    if (ps.some((p) => p.startsWith('OVERSIZ'))) return 'OVER';
+    if (ps.some((p) => p.startsWith('UNISEX'))) return 'UNIS';
+    const clave = ps.filter((p) => !['REMERA', 'REMERAS', 'DE', 'LA', 'EL'].includes(p));
+    return (clave[clave.length - 1] || ps[0] || 'MODE').slice(0, 4);
+  }
+  /* Sigla de 4 letras del color (BLAN, NEGR, AZUL…), sin repetir dentro del modelo */
+  function siglaColor(nombre, usadas = []) {
+    const ps = limpioSigla(nombre).split(/\s+/).filter(Boolean);
+    const prueba = [(ps[0] || 'COLO').slice(0, 4), ps[1] ? (ps[0].slice(0, 2) + ps[1].slice(0, 2)) : null, ps[1] ? (ps[0].slice(0, 3) + ps[1][0]) : null].filter(Boolean);
+    for (const s of prueba) if (!usadas.includes(s)) return s;
+    let n = 2;
+    while (usadas.includes(prueba[0].slice(0, 3) + n)) n++;
+    return prueba[0].slice(0, 3) + n;
+  }
+  /* Vuelve a calcular los códigos de las remeras de esos modelos. Los códigos
+     viejos se guardan para que las etiquetas ya impresas se sigan leyendo. */
+  async function regenerarCodigos(modelos) {
+    const viejos = { ...((Store.data.config.codigosViejos || {}).mapa || {}) };
+    const cambian = [];
+    Store.data.variantes.forEach((v) => {
+      const m = modelos.find((x) => x.id === v.modelo_id);
+      const c = m && m.colores.find((x) => x.nombre === v.color);
+      if (!c) return;
+      const nuevo = codigoDe(m, c, v.talle);
+      if (nuevo !== v.codigo) { viejos[v.codigo.toUpperCase()] = v.id; cambian.push({ ...v, codigo: nuevo }); }
+    });
+    if (!cambian.length) return 0;
+    await Store.setConfig('codigosViejos', { mapa: viejos });
+    await Store.saveMany('variantes', cambian);
+    return cambian.length;
+  }
+  /* Busca una remera por su código (también por un código viejo de una etiqueta impresa antes) */
+  function varianteDeCodigo(code) {
+    const c = String(code || '').trim().toUpperCase();
+    const v = Store.data.variantes.find((x) => x.codigo.toUpperCase() === c);
+    if (v) return v;
+    const id = ((Store.data.config.codigosViejos || {}).mapa || {})[c];
+    return id ? Store.data.variantes.find((x) => x.id === id) || null : null;
+  }
+  /* Pasa todos los modelos al formato nuevo (sigla de 4 letras en modelo y color) */
+  async function pasarCodigosNuevos() {
+    const modelos = [];
+    for (const m of Store.data.modelos) {
+      const usadas = [];
+      const colores = m.colores.map((c) => { const s = c.sigla && c.sigla.length === 4 ? c.sigla : siglaColor(c.nombre, usadas); usadas.push(s); return { ...c, sigla: s }; });
+      const sigla = m.sigla && m.sigla.length === 4 ? m.sigla : siglaModelo(m.nombre);
+      const nm = { ...m, sigla, colores };
+      if (JSON.stringify(nm) !== JSON.stringify(m)) await Store.save('modelos', nm);
+      modelos.push(nm);
+    }
+    return regenerarCodigos(modelos);
+  }
 
   function nuevoModelo(nombre, sigla, costo, precio, colores, talles) {
     return { id: uid(), nombre, sigla, costo, precio, colores, talles, activo: true, creado: new Date().toISOString() };
@@ -243,7 +301,7 @@
 
     async seed() {
       if (this.data.modelos.length) return;
-      const m = nuevoModelo('Remera unisex', 'U', 9000, 20000, COLORES_INICIALES, TALLES_INICIALES);
+      const m = nuevoModelo('Remera unisex', 'UNIS', 9000, 20000, COLORES_INICIALES, TALLES_INICIALES);
       m.id = 'unisex';   // mismo id que el catálogo inicial de la tienda
       await this.save('modelos', m);
       await this.saveMany('variantes', variantesDe(m));
@@ -1613,8 +1671,7 @@
     $$('.tabs button[data-m]', el).forEach((b) => b.addEventListener('click', () => { stockModelo = b.dataset.m; refresh(); }));
     $('#stock-find', el).addEventListener('submit', (e) => {
       e.preventDefault();
-      const code = $('#stock-code', el).value.trim().toUpperCase();
-      const v = Store.data.variantes.find((x) => x.codigo.toUpperCase() === code);
+      const v = varianteDeCodigo($('#stock-code', el).value);
       if (v) ajusteStock(v.id); else toast('No encontré ese código.', true);
     });
   }
@@ -1748,7 +1805,7 @@
     scan.last = code;
     scan.lastAt = now;
     const box = $('#scan-result');
-    const v = Store.data.variantes.find((x) => x.codigo.toUpperCase() === code);
+    const v = varianteDeCodigo(code);
     if (!v) {
       beep(false);
       box.innerHTML = `<div class="scan-hit is-bad"><span>No encontré <b style="font-size:14px">${esc(code)}</b></span></div>`;
@@ -2175,7 +2232,7 @@
     $('#cu-med', el).textContent = `hoja de ${cue.ancho} × ${(hoja.h / 10).toLocaleString('es-AR', { maximumFractionDigits: 1 })} cm`;
     // En pantalla siempre se ve cada etiqueta sobre el color de su remera (el PDF respeta la casilla)
     pintarCuello($('#cu-canvas', el), cue.fondo ? hoja : hojaCuello(lista, cue.ancho * 10, { ...cue, fondo: true }));
-    const re = () => renderCuello(el);
+    const re = () => renderEtiquetas(el);
     $$('.seg [data-tipo]', el).forEach((b) => b.addEventListener('click', () => { lbl.tipo = b.dataset.tipo; guardarLbl(); refresh(); }));
     $('#cu-mod', el).addEventListener('change', (e) => { cue.modelo = e.target.value; re(); });
     $('#cu-ancho', el).addEventListener('change', (e) => { cue.ancho = clamp(Math.round(Number(e.target.value) || 59), 20, 120); re(); });
@@ -2190,7 +2247,28 @@
     });
   }
 
+  /* Aviso para pasar los códigos al formato nuevo (una sola vez) */
+  function avisoCodigos(el) {
+    const viejos = Store.data.variantes.filter((v) => /^TE-/i.test(v.codigo)).length;
+    if (!viejos) return;
+    const ej = Store.data.modelos[0];
+    el.insertAdjacentHTML('afterbegin', `<section class="box cod-aviso"><h2>Códigos más fáciles de leer</h2>
+      <p>Tus códigos todavía tienen el formato viejo (por ejemplo <b>TE-U-NEG-03</b>). Pasalos al nuevo: <b>${ej ? esc(codigoDe({ sigla: ej.sigla && ej.sigla.length === 4 ? ej.sigla : siglaModelo(ej.nombre) }, { sigla: siglaColor((ej.colores[1] || ej.colores[0]).nombre) }, '3')) : 'UNIS-NEGR-03'}</b>, con 4 letras para el modelo y el color.
+      Las etiquetas que ya imprimiste se van a seguir leyendo con la pistola.</p>
+      <div class="row-actions" style="justify-content:flex-start"><button type="button" class="download" id="cod-pasar">Pasar ${viejos} códigos al formato nuevo</button></div></section>`);
+    $('#cod-pasar', el).addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Actualizando…';
+      const n = await pasarCodigosNuevos();
+      toast(`Listo: ${n} códigos actualizados.`);
+      barrasCache.clear();
+      refresh();
+    });
+  }
   async function renderEtiquetas(el) {
+    await renderEtiquetasTipo(el);
+    avisoCodigos(el);
+  }
+  async function renderEtiquetasTipo(el) {
     if (lbl.tipo === 'cuello') return renderCuello(el);
     const modelos = Store.data.modelos;
     if (!lbl.modelo || !modeloDe(lbl.modelo)) { lbl.modelo = modelos[0] && modelos[0].id; lbl.colores = null; lbl.talles = null; }
@@ -2509,7 +2587,7 @@
     openModal(m0 ? `Editar ${m0.nombre}` : 'Nuevo modelo', `
       <div class="form-grid">
         <label class="field"><span class="field-label">Nombre</span><input type="text" id="mf-nom" maxlength="40" value="${esc(m0 ? m0.nombre : 'Remera oversize')}"></label>
-        <label class="field"><span class="field-label">Sigla para el código (1 a 3 letras)</span><input type="text" id="mf-sig" maxlength="3" value="${esc(m0 ? m0.sigla : 'O')}" ${m0 ? 'disabled' : ''}></label>
+        <label class="field"><span class="field-label">Sigla para el código (4 letras, ej. OVER, UNIS)</span><input type="text" id="mf-sig" maxlength="4" value="${esc(m0 ? m0.sigla : '')}" placeholder="OVER"></label>
         <label class="field"><span class="field-label">Costo ($)</span><input type="number" id="mf-cos" min="0" step="100" value="${m0 ? m0.costo : 9000}"></label>
         <label class="field"><span class="field-label">Precio base de venta ($)</span><input type="number" id="mf-pre" min="0" step="100" value="${m0 ? m0.precio : 20000}"></label>
         <label class="field full"><span class="field-label">Talles (separados por coma)</span><input type="text" id="mf-tal" value="${esc((m0 ? m0.talles : TALLES_INICIALES).join(', '))}"></label>
@@ -2528,7 +2606,7 @@
         box.innerHTML = colores.map((c, i) => `<div class="stamp-row" data-i="${i}" style="grid-template-columns:44px minmax(0,1.6fr) minmax(0,1fr) 34px">
           <label>Color<input type="color" data-k="hex" value="${c.hex}" style="padding:2px;height:38px"></label>
           <label>Nombre<input type="text" data-k="nombre" maxlength="24" value="${esc(c.nombre)}"></label>
-          <label>Sigla<input type="text" data-k="sigla" maxlength="3" value="${esc(c.sigla)}"></label>
+          <label>Sigla<input type="text" data-k="sigla" maxlength="4" value="${esc(c.sigla)}" placeholder="NEGR"></label>
           <button type="button" class="icon-btn danger" aria-label="Quitar color">✕</button></div>`).join('');
         $$('.stamp-row', box).forEach((r) => {
           const i = Number(r.dataset.i);
@@ -2537,7 +2615,7 @@
         });
       };
       draw();
-      $('#mf-add', body).addEventListener('click', () => { colores.push({ nombre: 'Nuevo color', sigla: 'NUE', hex: '#888888' }); draw(); });
+      $('#mf-add', body).addEventListener('click', () => { colores.push({ nombre: 'Nuevo color', sigla: '', hex: '#888888' }); draw(); });
       // Tabla de precios por talle (vacío = usa el del modelo)
       const ajustes = {};
       if (m0) m0.talles.forEach((t) => { const a = ajusteTalle(m0, t); if (a.costo > 0 || a.precio > 0) ajustes[t] = { costo: a.costo || '', precio: a.precio || '' }; });
@@ -2561,12 +2639,18 @@
       });
       $('#mf-ok', body).addEventListener('click', async () => {
         const nombre = $('#mf-nom', body).value.trim();
-        const sigla = (m0 ? m0.sigla : $('#mf-sig', body).value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''));
+        const sigla = limpioSigla($('#mf-sig', body).value).replace(/ /g, '').slice(0, 4) || siglaModelo(nombre);
         const talles = $('#mf-tal', body).value.split(',').map((t) => t.trim()).filter(Boolean);
-        const cols = colores.filter((c) => c.nombre.trim()).map((c) => ({ nombre: c.nombre.trim(), sigla: (c.sigla || c.nombre.slice(0, 3)).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3), hex: c.hex }));
+        const usadas = [];
+        const cols = colores.filter((c) => c.nombre.trim()).map((c) => {
+          let s = limpioSigla(c.sigla).replace(/ /g, '').slice(0, 4);
+          if (!s || usadas.includes(s)) s = siglaColor(c.nombre, usadas);
+          usadas.push(s);
+          return { nombre: c.nombre.trim(), sigla: s, hex: c.hex };
+        });
         if (!nombre || !sigla || !talles.length || !cols.length) { toast('Completá nombre, sigla, talles y al menos un color.', true); return; }
-        if (!m0 && Store.data.modelos.some((x) => x.sigla === sigla)) { toast('Esa sigla ya la usa otro modelo.', true); return; }
-        const m = m0 ? { ...m0, nombre, talles, colores: cols, costo: Number($('#mf-cos', body).value) || 0, precio: Number($('#mf-pre', body).value) || 0 }
+        if (Store.data.modelos.some((x) => x.sigla === sigla && (!m0 || x.id !== m0.id))) { toast('Esa sigla ya la usa otro modelo.', true); return; }
+        const m = m0 ? { ...m0, nombre, sigla, talles, colores: cols, costo: Number($('#mf-cos', body).value) || 0, precio: Number($('#mf-pre', body).value) || 0 }
           : nuevoModelo(nombre, sigla, Number($('#mf-cos', body).value) || 0, Number($('#mf-pre', body).value) || 0, cols, talles);
         await Store.save('modelos', m);
         // Precios por talle (solo los talles que tienen algún valor propio)
@@ -2579,13 +2663,15 @@
         const porTalle = { ...(cfg.porTalle || {}) };
         if (Object.keys(propios).length) porTalle[m.id] = propios; else delete porTalle[m.id];
         if (JSON.stringify(porTalle) !== JSON.stringify(cfg.porTalle || {})) await Store.setConfig('cotizador', { ...cfg, porTalle });
+        // Si cambió la sigla del modelo o de algún color, se actualizan sus códigos
+        const recod = m0 ? await regenerarCodigos([m]) : 0;
         const nuevas = variantesDe(m, Store.data.variantes);
         await Store.saveMany('variantes', nuevas);
         // Combinaciones quitadas: se borran solo si no tienen stock
         const sobran = Store.data.variantes.filter((v) => v.modelo_id === m.id && (!m.colores.some((c) => c.nombre === v.color) || !m.talles.includes(v.talle)) && v.stock === 0);
         for (const v of sobran) await Store.remove('variantes', v.id);
         closeModal();
-        toast(`Guardado. ${nuevas.length ? `Se crearon ${nuevas.length} códigos nuevos.` : ''}`);
+        toast(`Guardado. ${nuevas.length ? `Se crearon ${nuevas.length} códigos nuevos.` : ''}${recod ? ` Se actualizaron ${recod} códigos (las etiquetas viejas se siguen leyendo).` : ''}`);
         refresh();
       });
     });
